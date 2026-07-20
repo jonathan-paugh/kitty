@@ -5111,6 +5111,50 @@ is_rectangle_select(Screen *self, PyObject *a UNUSED) {
 }
 
 static PyObject*
+set_extra_cursor(Screen *self, PyObject *args) {
+    int x = -1, y = -1, shape = CURSOR_BLOCK;
+    if (!PyArg_ParseTuple(args, "|iii", &x, &y, &shape)) return NULL;
+    if (x < 0 || y < 0) {
+        if (self->extra_cursors.count) { self->extra_cursors.count = 0; self->extra_cursors.dirty = true; }
+        Py_RETURN_NONE;
+    }
+    if (self->extra_cursors.capacity < 1) {
+        ExtraCursor *resized = realloc(self->extra_cursors.locations, sizeof(ExtraCursor));
+        if (!resized) return PyErr_NoMemory();
+        self->extra_cursors.locations = resized;
+        self->extra_cursors.capacity = 1;
+    }
+    self->extra_cursors.locations[0].cell = (index_type)y * self->columns + (index_type)x;
+    self->extra_cursors.locations[0].shape = (CursorShape)shape;
+    // Colour the extra cursor like the real one. Without this the colour is left unset
+    // (zero = black) and the cursor renders as a near invisible black mark on a dark
+    // background. Fall back to the foreground when the cursor is cell coloured.
+    ColorProfile *cp = self->color_profile;
+    color_type cursor_bg = colorprofile_to_color(cp, cp->overridden.cursor_color, cp->configured.cursor_color).rgb;
+    if (cp->configured.cursor_color.type == COLOR_IS_SPECIAL) {
+        cursor_bg = colorprofile_to_color(cp, cp->overridden.default_fg, cp->configured.default_fg).rgb;
+    }
+    color_type cursor_fg = colorprofile_to_color(cp, cp->overridden.default_bg, cp->configured.default_bg).rgb;
+    self->extra_cursors.color.cursor.type = COLOR_IS_RGB;
+    self->extra_cursors.color.cursor.rgb = cursor_bg;
+    self->extra_cursors.color.text.type = COLOR_IS_RGB;
+    self->extra_cursors.color.text.rgb = cursor_fg;
+    self->extra_cursors.count = 1;
+    self->extra_cursors.dirty = true;
+    Py_RETURN_NONE;
+}
+
+static PyObject*
+selection_range_for_word(Screen *self, PyObject *args) {
+    unsigned int x, y;
+    int initial_selection = 0;
+    if (!PyArg_ParseTuple(args, "II|p", &x, &y, &initial_selection)) return NULL;
+    index_type y1, y2, s, e;
+    if (!screen_selection_range_for_word(self, x, y, &y1, &y2, &s, &e, initial_selection)) Py_RETURN_NONE;
+    return Py_BuildValue("II", s, e);
+}
+
+static PyObject*
 copy_colors_from(Screen *self, Screen *other) {
     copy_color_profile(self->color_profile, other->color_profile);
     Py_RETURN_NONE;
@@ -6372,6 +6416,8 @@ static PyMethodDef methods[] = {
     MND(text_for_selection, METH_VARARGS)
     MND(text_for_marked_url, METH_VARARGS)
     MND(is_rectangle_select, METH_NOARGS)
+    MND(selection_range_for_word, METH_VARARGS)
+    MND(set_extra_cursor, METH_VARARGS)
     MND(scroll, METH_VARARGS)
     MND(scroll_to_absolute, METH_O)
     MND(fractional_scroll, METH_O)

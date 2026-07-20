@@ -2443,6 +2443,221 @@ class Window:
     def clear_selection(self) -> None:
         self.screen.clear_selection()
 
+    # Position of the scrollback cursor in screen coords, None when it is not in use.
+    keyboard_cursor_pos: tuple[int, int] | None = None
+    # Where a selection was started from, None when only the cursor is being moved.
+    keyboard_cursor_anchor: tuple[int, int] | None = None
+    # The terminal's own cursor when we last moved, used to notice the screen changing.
+    keyboard_cursor_terminal_pos: tuple[int, int] | None = None
+    # How far the view was scrolled when we last moved, so the cursor can stay on its
+    # line when the viewport is scrolled by something else.
+    keyboard_cursor_scrolled_by: int | None = None
+
+    def keyboard_cursor_line_end(self, y: int) -> int:
+        ' Column of the last cell on visual line y that holds text, -1 for a blank line. '
+        screen = self.screen
+        for column in range(screen.columns - 1, -1, -1):
+            if screen.selection_range_for_word(column, y, True) is not None:
+                return column
+        return -1
+
+    def keyboard_cursor_scroll_to_row(self, y: int) -> tuple[int, bool]:
+        ''' Scroll the viewport so row y is on screen.
+
+        Returns the on-screen row and whether the viewport was already at a buffer edge
+        and so could not move any further.
+        '''
+        screen = self.screen
+        if 0 <= y < screen.lines:
+            return y, False
+        scrolled_from = screen.scrolled_by
+        upwards = y < 0
+        if screen.is_main_linebuf():
+            self.finish_scroll_animation()
+            screen.scroll(-y if upwards else y - screen.lines + 1, upwards)
+        reached_edge = screen.scrolled_by == scrolled_from
+        return (0 if upwards else screen.lines - 1), reached_edge
+
+    def keyboard_cursor_word_boundary(self, y: int, x: int, direction: str) -> tuple[int, int]:
+        ''' Position of the next word boundary, searching from (x, y).
+
+        Uses the screen's own word ranges rather than scanning text, so it stays in cell
+        coordinates and copes with tabs and wide characters, which do not map one to one
+        onto a python string. Running out of words on a line continues onto the next one.
+        '''
+        screen = self.screen
+        # initial_selection=True makes blank cells report no word, which is what lets this
+        # skip over the run of blanks a tab expands into.
+        if direction == 'left':
+            column = x - 1
+            while column >= 0:
+                word = screen.selection_range_for_word(column, y, True)
+                if word is not None:
+                    return int(word[0]), y
+                column -= 1
+            return max(0, self.keyboard_cursor_line_end(y - 1)), y - 1
+        column = x
+        word = screen.selection_range_for_word(column, y, True)
+        if word is not None:
+            column = int(word[1]) + 1
+        while column < screen.columns:
+            word = screen.selection_range_for_word(column, y, True)
+            if word is not None:
+                return int(word[0]), y
+            column += 1
+        # No word right of here. Stop at the end of this line first, and only continue
+        # onto the next line once the cursor is already there.
+        line_end = min(self.keyboard_cursor_line_end(y) + 1, screen.columns - 1)
+        if x < line_end:
+            return line_end, y
+        return 0, y + 1
+
+    @ac('cp', '''
+        Move a cursor through the screen and scrollback
+
+        Takes a direction (left, right, up, down, buffer_start, buffer_end, line_start,
+        line_end, page_up, page_down) and optionally the words ``word`` to move a word at a time and
+        ``select`` to extend a selection as the cursor moves. A number sets how much of
+        the screen the paging directions move, so 0.5 pages by half a screen. The cursor
+        enters the scrollback on first use, so no separate mode is needed. For example::
+
+            map alt+up keyboard_cursor_move up
+            map alt+shift+up keyboard_cursor_move up select
+            map alt+ctrl+shift+left keyboard_cursor_move left word select
+        ''')
+    def keyboard_cursor_move(
+        self, direction: str = 'left', unit: str = 'cell', select: bool = False, page_fraction: float = 1.0
+    ) -> bool | None:
+        screen = self.screen
+        pos = self.keyboard_cursor_pos
+        if pos is not None:
+            # The plain scroll keys move the view without moving the cursor. Shift the
+            # cursor by however far the view moved so it stays on the line it was on.
+            if self.keyboard_cursor_scrolled_by is not None:
+                delta = screen.scrolled_by - self.keyboard_cursor_scrolled_by
+                if delta:
+                    pos = (pos[0], pos[1] + delta)
+            # Typing or command output moves the terminal's own cursor and any draw drops
+            # the selection. Either means the scrollback cursor is stale, so start fresh.
+            # This is what makes typing at the prompt cancel it.
+            drawn_over = (screen.cursor.x, screen.cursor.y) != self.keyboard_cursor_terminal_pos
+            selection_lost = self.keyboard_cursor_anchor is not None and not screen.has_selection()
+            if drawn_over or selection_lost:
+                pos = None
+        if pos is None:
+            pos = (screen.cursor.x, screen.cursor.y)
+            self.keyboard_cursor_anchor = None
+        x, y = pos
+        # The cursor may be off screen if the view was scrolled without it. Bring it back
+        # into view before moving, otherwise the move is computed against a row that is not
+        # on screen and things like line ends come out wrong.
+        y, _ = self.keyboard_cursor_scroll_to_row(y)
+        page = max(1, int((screen.lines - 1) * page_fraction))
+        if unit == 'word' and direction in ('left', 'right'):
+            x, y = self.keyboard_cursor_word_boundary(y, x, direction)
+        elif direction == 'left':
+            x -= 1
+            if x < 0:
+                y -= 1
+                x = max(0, self.keyboard_cursor_line_end(y))
+        elif direction == 'right':
+            # Wrap at the end of the text rather than the edge of the screen, so short
+            # lines do not mean walking through a run of blank cells.
+            x += 1
+            # One past the last character is a valid place for the cursor (end of line),
+            # so only wrap once we would go beyond that.
+            if x > self.keyboard_cursor_line_end(y) + 1 or x >= screen.columns:
+                x, y = 0, y + 1
+        elif direction == 'up':
+            y -= 1
+        elif direction == 'down':
+            y += 1
+        elif direction == 'buffer_start':
+            # Jump to the oldest line in the scrollback.
+            if screen.is_main_linebuf():
+                self.finish_scroll_animation()
+                screen.scroll(SCROLL_FULL, True)
+            x, y = 0, 0
+        elif direction == 'buffer_end':
+            # Back to the live screen, at the terminal's own cursor.
+            if screen.is_main_linebuf():
+                self.finish_scroll_animation()
+                screen.scroll(SCROLL_FULL, False)
+            x, y = screen.cursor.x, screen.cursor.y
+        elif direction == 'line_start':
+            x = 0
+        elif direction == 'line_end':
+            x = min(self.keyboard_cursor_line_end(y) + 1, screen.columns - 1)
+        elif direction == 'page_up':
+            y -= page
+        elif direction == 'page_down':
+            y += page
+        # Moving may have run off an edge (into the scrollback, or by a page). Follow the
+        # cursor with the viewport. If we were already at a buffer edge there is nothing to
+        # wrap onto, so stay on the edge line rather than jumping across it.
+        went_below = y >= screen.lines
+        y, reached_edge = self.keyboard_cursor_scroll_to_row(y)
+        if reached_edge:
+            x = min(self.keyboard_cursor_line_end(y) + 1, screen.columns - 1) if went_below else 0
+        x = max(0, min(x, screen.columns - 1))
+        self.keyboard_cursor_pos = (x, y)
+        if select:
+            if self.keyboard_cursor_anchor is None:
+                self.keyboard_cursor_anchor = pos
+                screen.start_selection(pos[0], pos[1])
+            screen.update_selection(x, y, True, False)
+        else:
+            self.keyboard_cursor_anchor = None
+            screen.clear_selection()
+        # Draw our cursor where we are and hide the terminal's own, so it reads as one
+        # cursor that moved rather than two.
+        # cursor.shape is 0 when the window is using the configured default, so fall back
+        # to that rather than assuming a block.
+        screen.set_extra_cursor(x, y, screen.cursor.shape or get_options().cursor_shape or 1)
+        screen.cursor_visible = False
+        self.keyboard_cursor_terminal_pos = (screen.cursor.x, screen.cursor.y)
+        self.keyboard_cursor_scrolled_by = screen.scrolled_by
+        return None
+
+    def keyboard_cursor_clear_selection(self) -> None:
+        ' Drop the selection but leave the cursor where it is in the scrollback. '
+        if self.keyboard_cursor_pos is None:
+            return
+        self.keyboard_cursor_anchor = None
+        self.screen.clear_selection()
+
+    def keyboard_cursor_break_out(self) -> None:
+        ''' Leave the scrollback and hand the terminal back to the shell.
+
+        Called for any key that is not a scrollback operation, so typing or moving
+        around at the prompt returns from the scrollback without a separate step.
+        '''
+        if self.keyboard_cursor_pos is None:
+            return
+        self.keyboard_cursor_pos = None
+        self.keyboard_cursor_anchor = None
+        self.keyboard_cursor_terminal_pos = None
+        self.keyboard_cursor_scrolled_by = None
+        self.screen.clear_selection()
+        self.screen.set_extra_cursor()
+        self.screen.cursor_visible = True
+
+    @ac('cp', '''
+        Clear the scrollback selection, or leave the scrollback if there is none
+
+        The first press clears a selection but keeps the cursor where it is, a second
+        press returns to the prompt. Passes the key through when the cursor is not in use.
+        ''')
+    def keyboard_cursor_cancel(self) -> bool | None:
+        if self.keyboard_cursor_pos is None:
+            return True
+        if self.keyboard_cursor_anchor is not None and self.screen.has_selection():
+            self.keyboard_cursor_anchor = None
+            self.screen.clear_selection()
+            return None
+        self.keyboard_cursor_break_out()
+        return None
+
     def scroll_fractional_lines(self, amt: float) -> bool | None:
         ' Scroll fractionally, negative values are up and positive values are down '
         if self.screen.is_main_linebuf():

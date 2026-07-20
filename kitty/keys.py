@@ -213,6 +213,27 @@ class Mappings:
         is_root_mode = not self.keyboard_mode_stack
         mode = self.keyboard_modes[''] if is_root_mode else self.keyboard_mode_stack[-1]
         key_action = get_shortcut(mode.keymap, ev)
+        # A key that is not a scrollback operation leaves the scrollback cursor, so the
+        # keypress does its normal thing at the prompt. Scrolling, copying and moving
+        # between windows keep the cursor and selection (they are not text edits, and
+        # copying must not discard the selection it is copying). Scrolling matches kitty's
+        # own scroll_* actions as well as scripts like terminal-scroll run from a mapping.
+        # Search takes over navigation, so it drops the selection but keeps the cursor,
+        # like the first press of escape.
+        if not is_modifier_key(ev.key):
+            definitions = tuple(
+                getattr(a, 'definition', '') or getattr(a, 'func', '') for a in (key_action or ()))
+            keeps_cursor = any(
+                d.startswith('keyboard_cursor_') or 'copy' in d or 'scroll' in d or 'terminal-window' in d
+                for d in definitions)
+            clears_selection = any('search' in d for d in definitions)
+            if not keeps_cursor:
+                window = self.get_active_window()
+                if window is not None:
+                    if clears_selection:
+                        window.keyboard_cursor_clear_selection()
+                    else:
+                        window.keyboard_cursor_break_out()
         if key_action is None and self.global_shortcuts_map and (global_key_action := get_shortcut(self.global_shortcuts_map, ev)) is not None:
             if grab_keyboard(None):
                 # the shortcuts in the global menubar will have been bypassed so trigger them here

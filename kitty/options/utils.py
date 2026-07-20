@@ -93,6 +93,28 @@ def scroll_line_updown(func: str, rest: str) -> FuncArgsType:
     return func, [rest.strip().lower() == 'smooth']
 
 
+@func_with_args('keyboard_cursor_move')
+def keyboard_cursor_move(func: str, rest: str) -> FuncArgsType:
+    parts = rest.strip().lower().split()
+    direction = parts[0] if parts else 'left'
+    directions = ('left', 'right', 'up', 'down', 'buffer_start', 'buffer_end', 'line_start',
+                  'line_end', 'page_up', 'page_down')
+    if direction not in directions:
+        log_error(f'Unknown keyboard_cursor_move direction: {direction}, using left')
+        direction = 'left'
+    unit = 'word' if 'word' in parts[1:] else 'cell'
+    select = 'select' in parts[1:]
+    page_fraction = 1.0
+    for extra in parts[1:]:
+        if extra in ('word', 'select'):
+            continue
+        try:
+            page_fraction = float(extra)
+        except ValueError:
+            log_error(f'Unknown keyboard_cursor_move option: {extra}, ignoring')
+    return func, [direction, unit, select, page_fraction]
+
+
 @func_with_args('scroll_prompt_to_top')
 def scroll_prompt_to_top(func: str, rest: str) -> FuncArgsType:
     return func, [to_bool(rest) if rest else False]
