@@ -2544,6 +2544,10 @@ typedef pid_t (*glfwWaylandCompositorPID_func)(void);
 GFW_EXTERN glfwWaylandCompositorPID_func glfwWaylandCompositorPID_impl;
 #define glfwWaylandCompositorPID glfwWaylandCompositorPID_impl
 
+typedef double (*glfwGetWaylandCurrentMonitorFractionalScale_func)(void);
+GFW_EXTERN glfwGetWaylandCurrentMonitorFractionalScale_func glfwGetWaylandCurrentMonitorFractionalScale_impl;
+#define glfwGetWaylandCurrentMonitorFractionalScale glfwGetWaylandCurrentMonitorFractionalScale_impl
+
 typedef void (*glfwConfigureMomentumScroller_func)(double, double, double, unsigned);
 GFW_EXTERN glfwConfigureMomentumScroller_func glfwConfigureMomentumScroller_impl;
 #define glfwConfigureMomentumScroller glfwConfigureMomentumScroller_impl
