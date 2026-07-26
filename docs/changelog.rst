@@ -179,10 +179,26 @@ consumption to do the same tasks.
 Detailed list of changes
 -------------------------------------
 
-0.48.1 [future]
+
+0.48.2 [future]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- Wayland: fix a regression in the previous release that broke window sizing on Hyprland with fractional scales and an initial specified size (:iss:`10268`)
+- Wayland: Fix regression in previous release that broke drag and drop on Plasma (:iss:`10284`)
+
+
+0.48.1 [2026-07-24]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Wayland: fix a regression in the previous release that broke window sizing for on Hyprland/Sway with fractional scales and an initial specified size (:iss:`10268`)
+
+- Wayland: fix a regression in 0.47.3 that broke dragging on the Niri compositor (:iss:`10271`)
+
+- Wayland: get initial window size in cells working in most cases on Hyprland/Sway with fractional scaling by using the fractional scale of the primary monitor
+
+- Wayland: fix using remote control to resize OS windows on some tiling compositors leading to broken rendering
+
+- macOS: fix ``edge=none`` panel height shrinking when ``margin_top`` is non-zero in the panel/quick-access-terminal kittens (:iss:`10278`)
+
 
 0.48.0 [2026-07-18]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
