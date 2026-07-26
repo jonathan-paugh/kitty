@@ -951,6 +951,10 @@ class Window:
                 return self is self_window
             if query == 'overlay_parent':
                 return self_window is not None and self is self_window.overlay_parent
+            if query == 'alternate_screen':
+                # Matches while a full-screen application is running, so mappings that
+                # only make sense against the scrollback can be turned off for it.
+                return not self.screen.is_main_linebuf()
             return False
         if field == 'neighbor':
             t = get_boss().active_tab
@@ -2524,10 +2528,17 @@ class Window:
             map alt+up keyboard_cursor_move up
             map alt+shift+up keyboard_cursor_move up select
             map alt+ctrl+shift+left keyboard_cursor_move left word select
+
+        Passes the key through on the alternate screen, where there is no scrollback.
         ''')
     def keyboard_cursor_move(
         self, direction: str = 'left', unit: str = 'cell', select: bool = False, page_fraction: float = 1.0
     ) -> bool | None:
+        # The alternate screen has no scrollback for the cursor to move through, and a
+        # full-screen application almost certainly wants these keys itself, so report
+        # them as unhandled the way the built-in scroll actions do.
+        if not self.screen.is_main_linebuf():
+            return True
         screen = self.screen
         pos = self.keyboard_cursor_pos
         if pos is not None:
@@ -2646,10 +2657,13 @@ class Window:
         Clear the scrollback selection, or leave the scrollback if there is none
 
         The first press clears a selection but keeps the cursor where it is, a second
-        press returns to the prompt. Passes the key through when the cursor is not in use.
+        press returns to the prompt. Passes the key through when the cursor is not in
+        use, and on the alternate screen.
         ''')
     def keyboard_cursor_cancel(self) -> bool | None:
-        if self.keyboard_cursor_pos is None:
+        # Nothing to cancel when the cursor was never placed, or when the alternate
+        # screen is up and there is no scrollback to be in: pass the key through.
+        if not self.screen.is_main_linebuf() or self.keyboard_cursor_pos is None:
             return True
         if self.keyboard_cursor_anchor is not None and self.screen.has_selection():
             self.keyboard_cursor_anchor = None
