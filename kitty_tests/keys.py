@@ -528,6 +528,12 @@ class TestKeys(BaseTest):
             def send_key_sequence(self, *s):
                 self.key_seqs.extend(s)
 
+            def keyboard_cursor_break_out(self):
+                pass
+
+            def keyboard_cursor_clear_selection(self):
+                pass
+
         class TM(Mappings):
 
             def __init__(self, *lines, active_window = Window()):
