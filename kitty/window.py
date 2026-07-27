@@ -2303,6 +2303,8 @@ class Window:
             'user_vars': self.user_vars,
             'created_at': self.created_at,
             'in_alternate_screen': self.screen.is_using_alternate_linebuf(),
+            'scrolled_by': self.screen.scrolled_by,
+            'scrollback_lines': self.screen.historybuf.count,
             'neighbors': neighbors_map,
             'session_name': self.created_in_session_name,
             'needs_attention': self.needs_attention,
@@ -2614,11 +2616,11 @@ class Window:
     keyboard_cursor_pos: tuple[int, int] | None = None
     # Where a selection was started from, None when only the cursor is being moved.
     keyboard_cursor_anchor: tuple[int, int] | None = None
-    # The terminal's own cursor when we last moved, used to notice the screen changing.
-    keyboard_cursor_terminal_pos: tuple[int, int] | None = None
-    # How far the view was scrolled when we last moved, so the cursor can stay on its
-    # line when the viewport is scrolled by something else.
+    # How far the view was scrolled and how many lines had entered the scrollback when
+    # we last moved, so the cursor can stay anchored to its content line when the view
+    # is scrolled by something else or output pushes new lines in.
     keyboard_cursor_scrolled_by: int | None = None
+    keyboard_cursor_history_total: int | None = None
 
     def keyboard_cursor_line_end(self, y: int) -> int:
         ' Column of the last cell on visual line y that holds text, -1 for a blank line. '
@@ -2705,19 +2707,24 @@ class Window:
         screen = self.screen
         pos = self.keyboard_cursor_pos
         if pos is not None:
-            # The plain scroll keys move the view without moving the cursor. Shift the
-            # cursor by however far the view moved so it stays on the line it was on.
+            # Anchor the cursor to content rather than the viewport. The view moving
+            # (plain scroll keys) shifts on-screen positions by the scrolled_by delta,
+            # and output pushing lines into the scrollback shifts them back by the
+            # growth, including the case where kitty pins a scrolled view by growing
+            # scrolled_by in step with the new lines. The terminal's own cursor moving
+            # is deliberately not a reset: a program that redraws constantly (claude,
+            # watch) moves it every frame while the user is still reading, and typing
+            # already leaves the scrollback through the key dispatch hook.
             if self.keyboard_cursor_scrolled_by is not None:
                 delta = screen.scrolled_by - self.keyboard_cursor_scrolled_by
+                if self.keyboard_cursor_history_total is not None:
+                    delta -= screen.history_line_added_total - self.keyboard_cursor_history_total
                 if delta:
                     pos = (pos[0], pos[1] + delta)
-            # Typing or command output moves the terminal's own cursor and any draw drops
-            # the selection. Either means the scrollback cursor is stale, so start fresh.
-            # This is what makes typing at the prompt cancel it.
-            drawn_over = (screen.cursor.x, screen.cursor.y) != self.keyboard_cursor_terminal_pos
-            selection_lost = self.keyboard_cursor_anchor is not None and not screen.has_selection()
-            if drawn_over or selection_lost:
-                pos = None
+            if self.keyboard_cursor_anchor is not None and not screen.has_selection():
+                # Output rewrote the screen and kitty dropped the selection. Keep the
+                # reading position but do not resurrect the dead selection.
+                self.keyboard_cursor_anchor = None
         if pos is None:
             pos = (screen.cursor.x, screen.cursor.y)
             self.keyboard_cursor_anchor = None
@@ -2787,11 +2794,40 @@ class Window:
         # cursor that moved rather than two.
         # cursor.shape is 0 when the window is using the configured default, so fall back
         # to that rather than assuming a block.
+        # The suppression is render-side rather than the DECTCEM mode (cursor_visible)
+        # because that mode belongs to the application: a redrawing program re-shows
+        # the cursor with it, making the hidden cursor flicker back while we are in
+        # the scrollback.
         screen.set_extra_cursor(x, y, screen.cursor.shape or get_options().cursor_shape or 1)
-        screen.cursor_visible = False
-        self.keyboard_cursor_terminal_pos = (screen.cursor.x, screen.cursor.y)
+        screen.suppress_cursor_render = True
         self.keyboard_cursor_scrolled_by = screen.scrolled_by
+        self.keyboard_cursor_history_total = screen.history_line_added_total
         return None
+
+    def view_scrolled(self) -> None:
+        ''' Called from C whenever the user scrolls the view. The extra cursor is
+        drawn at viewport coordinates, so re-place it on the content line it sits
+        on, hiding it while that line is off screen. The logical position is
+        rebased at the same time so the next move composes correctly. '''
+        pos = self.keyboard_cursor_pos
+        if pos is None or self.keyboard_cursor_scrolled_by is None:
+            return
+        screen = self.screen
+        delta = screen.scrolled_by - self.keyboard_cursor_scrolled_by
+        if self.keyboard_cursor_history_total is not None:
+            delta -= screen.history_line_added_total - self.keyboard_cursor_history_total
+        self.keyboard_cursor_scrolled_by = screen.scrolled_by
+        self.keyboard_cursor_history_total = screen.history_line_added_total
+        if not delta:
+            return
+        x, y = pos[0], pos[1] + delta
+        self.keyboard_cursor_pos = (x, y)
+        if 0 <= y < screen.lines:
+            screen.set_extra_cursor(x, y, screen.cursor.shape or get_options().cursor_shape or 1)
+        else:
+            # Keep the logical position so the next keyboard move scrolls back to
+            # it, but do not draw a cursor over unrelated content.
+            screen.set_extra_cursor()
 
     def keyboard_cursor_clear_selection(self) -> None:
         ' Drop the selection but leave the cursor where it is in the scrollback. '
@@ -2810,11 +2846,13 @@ class Window:
             return
         self.keyboard_cursor_pos = None
         self.keyboard_cursor_anchor = None
-        self.keyboard_cursor_terminal_pos = None
         self.keyboard_cursor_scrolled_by = None
+        self.keyboard_cursor_history_total = None
         self.screen.clear_selection()
         self.screen.set_extra_cursor()
-        self.screen.cursor_visible = True
+        # Only lift our own suppression rather than forcing the cursor visible, so an
+        # application that hid its cursor keeps it hidden after we leave.
+        self.screen.suppress_cursor_render = False
 
     @ac('cp', '''
         Clear the scrollback selection, or leave the scrollback if there is none

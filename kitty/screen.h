@@ -134,6 +134,10 @@ typedef struct {
     GraphicsManager *grman, *main_grman, *alt_grman;
     HistoryBuf *historybuf;
     unsigned int history_line_added_count;
+    // Monotonic total of lines pushed into history. Unlike history_line_added_count,
+    // which is a pending delta consumed and reset by every render, this is never
+    // reset, so Python-side code can diff two reads to measure content growth.
+    unsigned int history_line_added_total;
     bool *tabstops, *main_tabstops, *alt_tabstops;
     ScreenModes modes, saved_modes;
     ColorProfile *color_profile;
@@ -207,6 +211,10 @@ typedef struct {
     ListOfChars *lc;
     monotonic_t parsing_at;
     ExtraCursors extra_cursors;
+    // Render-side cursor suppression, set from Python when an extra cursor stands in
+    // for the terminal's own (keyboard scrollback cursor). Kept separate from the
+    // DECTCEM mode so applications toggling cursor visibility cannot re-show it.
+    bool suppress_cursor_render;
     struct {
         bool active;
         DnDCommand metadata;
