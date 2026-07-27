@@ -11,20 +11,43 @@ norm(float x, float y) {
 
 typedef struct ndc_coords { float xstart, ystart, dx, dy; } ndc_coords;
 
+// The keyboard scrollback cursor suppresses the terminal's own cursor and stands in
+// for it via an extra cursor, so the trail should follow that cursor instead.
+static const ExtraCursor*
+keyboard_cursor(Window *w) {
+    Screen *screen = WD.screen;
+    if (!screen->suppress_cursor_render) return NULL;
+    const ExtraCursors *ec = screen->paused_rendering.expires_at ? &screen->paused_rendering.extra_cursors : &screen->extra_cursors;
+    return ec->count ? &ec->locations[0] : NULL;
+}
+
+static bool
+trail_cursor_is_visible(Window *w) {
+    return WD.screen->modes.mDECTCEM || keyboard_cursor(w) != NULL;
+}
+
 static void
 update_cursor_trail_target(CursorTrail *ct, Window *w, ndc_coords g) {
     float left = FLT_MAX, right = FLT_MAX, top = FLT_MAX, bottom = FLT_MAX;
-    switch (WD.screen->cursor_render_info.shape) {
+    CursorShape shape = WD.screen->cursor_render_info.shape;
+    unsigned cursor_x = WD.screen->cursor_render_info.x, cursor_y = WD.screen->cursor_render_info.y;
+    const ExtraCursor *kc = keyboard_cursor(w);
+    if (kc) {
+        cursor_x = kc->cell % WD.screen->columns;
+        cursor_y = kc->cell / WD.screen->columns;
+        shape = kc->shape;
+    }
+    switch (shape) {
         case CURSOR_BLOCK:
         case CURSOR_HOLLOW:
         case CURSOR_BEAM:
         case CURSOR_UNDERLINE:
-            left = g.xstart + WD.screen->cursor_render_info.x * g.dx;
-            bottom = g.ystart - (WD.screen->cursor_render_info.y + 1) * g.dy;
+            left = g.xstart + cursor_x * g.dx;
+            bottom = g.ystart - (cursor_y + 1) * g.dy;
         default:
             break;
     }
-    switch (WD.screen->cursor_render_info.shape) {
+    switch (shape) {
         case CURSOR_BLOCK:
         case CURSOR_HOLLOW:
             right = left + g.dx;
@@ -55,7 +78,7 @@ should_skip_cursor_trail_update(CursorTrail *ct, ndc_coords g, OSWindow *os_wind
         return true;
     }
 
-    if (!WD.screen->modes.mDECTCEM && ct->opacity <= 0.0f) {
+    if (!trail_cursor_is_visible(w) && ct->opacity <= 0.0f) {
         return true;
     }
 
@@ -134,7 +157,7 @@ update_cursor_trail_opacity(CursorTrail *ct, Window *w, monotonic_t now) {
     const bool cursor_trail_always_visible = false;
     if (cursor_trail_always_visible) {
         ct->opacity = 1.0f;
-    } else if (WD.screen->modes.mDECTCEM) {
+    } else if (trail_cursor_is_visible(w)) {
         ct->opacity += (float)monotonic_t_to_s_double(now - ct->updated_at) / OPT(cursor_trail_decay_slow);
         ct->opacity = fminf(ct->opacity, 1.0f);
     } else {
@@ -169,7 +192,11 @@ update_cursor_trail(CursorTrail *ct, Window *w, monotonic_t now, OSWindow *os_wi
         .dx     = gl_size (w->render_data.screen->cell_size.width, os_window->viewport_width),
         .dy     = gl_size (w->render_data.screen->cell_size.height, os_window->viewport_height),
     };
-    if (!WD.screen->paused_rendering.expires_at && OPT(cursor_trail) <= now - WD.screen->cursor->position_changed_by_client_at) {
+    // The client-move threshold must not gate the keyboard cursor: its moves are
+    // user-driven, and a program writing output at the same time would otherwise
+    // freeze the trail target while the keyboard cursor walks away.
+    if (!WD.screen->paused_rendering.expires_at
+            && (keyboard_cursor(w) != NULL || OPT(cursor_trail) <= now - WD.screen->cursor->position_changed_by_client_at)) {
         update_cursor_trail_target(ct, w, g);
     }
 

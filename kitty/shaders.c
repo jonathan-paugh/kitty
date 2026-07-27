@@ -1273,17 +1273,29 @@ static void
 draw_window_logo(const UIRenderData *ui) {
     struct { unsigned width, height; int left, top; } w;
     WindowLogoRenderData *wl = ui->window_logo;
+    // The logo canvas is the full window rect including the spaces around the
+    // cell area (compensatory padding from the window size not being an exact
+    // multiple of the cell size). Without this, edge-anchored logos stop a few
+    // pixels short of the true window edges.
+    unsigned canvas_width = ui->screen_width, canvas_height = ui->screen_height;
+    int canvas_left = (int)ui->screen_left, canvas_top = (int)ui->screen_top;
+    if (ui->window) {
+        const WindowGeometry *g = &ui->window->render_data.geometry;
+        canvas_left -= (int)g->spaces.left; canvas_top -= (int)g->spaces.top;
+        canvas_width += g->spaces.left + g->spaces.right;
+        canvas_height += g->spaces.top + g->spaces.bottom;
+    }
     w.height = wl->instance->height; w.width = wl->instance->width;
     if (OPT(window_logo_scale.width) > 0 || OPT(window_logo_scale.height) > 0) {
-        unsigned scaled_wl_width = ui->screen_width, scaled_wl_height = ui->screen_height;
+        unsigned scaled_wl_width = canvas_width, scaled_wl_height = canvas_height;
 
         // [sx] Scales logo to sx % of the viewports shortest dimension, preserving aspect ratio
         if (OPT(window_logo_scale.height) < 0) {
-            if (ui->screen_height < ui->screen_width) {
-                scaled_wl_height = (int)(ui->screen_height * OPT(window_logo_scale.width) / 100);
+            if (canvas_height < canvas_width) {
+                scaled_wl_height = (int)(canvas_height * OPT(window_logo_scale.width) / 100);
                 scaled_wl_width = wl->instance->width * scaled_wl_height / wl->instance->height;
             } else {
-                scaled_wl_width = (int)(ui->screen_width * OPT(window_logo_scale.width) / 100);
+                scaled_wl_width = (int)(canvas_width * OPT(window_logo_scale.width) / 100);
                 scaled_wl_height = wl->instance->height * scaled_wl_width / wl->instance->width;
             }
         }
@@ -1304,12 +1316,14 @@ draw_window_logo(const UIRenderData *ui) {
         }
         w.width = scaled_wl_width; w.height = scaled_wl_height;
     }
-    w.left = (int)(ui->screen_width * wl->position.canvas_x - w.width * wl->position.image_x);
-    w.top = (int)(ui->screen_height * wl->position.canvas_y - w.height * wl->position.image_y);
-    float left = gl_pos_x(w.left, ui->screen_width), top = gl_pos_y(w.top, ui->screen_height);
+    w.left = (int)(canvas_width * wl->position.canvas_x - w.width * wl->position.image_x);
+    w.top = (int)(canvas_height * wl->position.canvas_y - w.height * wl->position.image_y);
+    float left = gl_pos_x(w.left, canvas_width), top = gl_pos_y(w.top, canvas_height);
     ImageRenderData d = {.texture_id = wl->instance->texture_id};
-    gpu_data_for_image(&d, left, top, left + gl_size(w.width, ui->screen_width), top - gl_size(w.height, ui->screen_height));
+    save_viewport_using_top_left_origin(canvas_left, canvas_top, canvas_width, canvas_height, ui->full_framebuffer_height);
+    gpu_data_for_image(&d, left, top, left + gl_size(w.width, canvas_width), top - gl_size(w.height, canvas_height));
     draw_graphics(GRAPHICS_PROGRAM, &d, 0, 1, ui->inactive_text_alpha * OPT(window_logo_alpha));
+    restore_viewport();
 }
 
 bool

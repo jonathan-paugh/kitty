@@ -178,6 +178,7 @@ do_screen_reset(Screen *self, bool is_hard_reset) {
     screen_pause_rendering(self, false, 0);
     self->dnd_chunking.active = false;
     self->extra_cursors.count = 0; zero_at_ptr(&self->extra_cursors.color); self->extra_cursors.dirty = true;
+    self->suppress_cursor_render = false;
     self->main_pointer_shape_stack.count = 0; self->alternate_pointer_shape_stack.count = 0;
     if (is_hard_reset && self->linebuf == self->alt_linebuf) screen_toggle_screen_buffer(self, true, true);
     if (screen_is_overlay_active(self)) {
@@ -2053,6 +2054,7 @@ change_pointer_shape(Screen *self, PyObject *args) {
 
 bool
 screen_is_cursor_visible(const Screen *self) {
+    if (self->suppress_cursor_render) return false;
     return self->paused_rendering.expires_at ? self->paused_rendering.cursor_visible : self->modes.mDECTCEM;
 }
 
@@ -2209,6 +2211,7 @@ screen_cursor_to_column(Screen *self, unsigned int column) {
         linebuf_init_line(self->linebuf, bottom); \
         historybuf_add_line(self->historybuf, self->linebuf->line, &self->as_ansi_buf); \
         self->history_line_added_count++; \
+        self->history_line_added_total++; \
         if (self->last_visited_prompt.is_set) { \
             if (self->last_visited_prompt.scrolled_by < self->historybuf->count) self->last_visited_prompt.scrolled_by++; \
             else self->last_visited_prompt.is_set = false; \
@@ -2577,6 +2580,11 @@ static void
 dirty_scroll(Screen *self) {
     self->scroll_changed = true;
     screen_pause_rendering(self, false, 0);
+    // Every user-driven change of scrolled_by funnels through here, so this is the
+    // one place the keyboard scrollback cursor can be told to re-anchor its rendered
+    // position to the content it sits on (the extra cursor is placed in viewport
+    // coordinates, which go stale the moment the view scrolls under it).
+    CALLBACK("view_scrolled", NULL);
 }
 
 static void
@@ -6485,6 +6493,8 @@ static PyMemberDef members[] = {
     {"margin_top", T_UINT, offsetof(Screen, margin_top), READONLY, "margin_top"},
     {"margin_bottom", T_UINT, offsetof(Screen, margin_bottom), READONLY, "margin_bottom"},
     {"history_line_added_count", T_UINT, offsetof(Screen, history_line_added_count), 0, "history_line_added_count"},
+    {"history_line_added_total", T_UINT, offsetof(Screen, history_line_added_total), READONLY, "history_line_added_total"},
+    {"suppress_cursor_render", T_BOOL, offsetof(Screen, suppress_cursor_render), 0, "suppress_cursor_render"},
     {NULL}
 };
 

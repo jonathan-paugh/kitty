@@ -1239,6 +1239,7 @@ class Screen:
     paste_events: bool
     color_preference_notification: bool
     cursor_visible: bool
+    suppress_cursor_render: bool
     scrolled_by: int
     cursor: Cursor
     disable_ligatures: int
