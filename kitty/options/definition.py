@@ -1570,7 +1570,7 @@ opt(
     'yes',
     option_type='to_bool',
     long_text="""
-If enabled, the :term:`OS Window <os_window>` size will be remembered so that
+If enabled, the :term:`OS Window <os_window>` size and maximize state will be remembered so that
 new instances of kitty will have the same size as the previous instance.
 If disabled, the :term:`OS Window <os_window>` will initially have size
 configured by initial_window_width/height, in pixels. You can use a suffix of
@@ -2214,6 +2214,48 @@ left unset.
 )
 
 opt(
+    'tab_title_max_lines',
+    '1',
+    option_type='positive_int',
+    long_text="""
+The maximum number of lines each tab may occupy, for vertical tab bars only
+(see :opt:`tab_bar_edge`). Titles containing newlines are rendered over
+multiple lines, up to this limit; any remaining lines are dropped. A value of
+:code:`1` (the default) keeps every tab on a single line, so newlines in
+:opt:`tab_title_template` have no effect. Increase it to make room for
+multi-line titles, for example::
+
+    tab_title_max_lines 2
+    tab_title_template "{index}: {tab.active_exe}\\n{title}"
+
+Note that tabs are packed according to the number of lines each title actually
+uses, so a tab with a single-line title still occupies only one line even when
+this is greater than one.
+""",
+)
+
+opt(
+    'tab_title_wrap',
+    'no',
+    option_type='tab_title_wrap',
+    long_text="""
+Wrap tab titles that are too long to fit instead of truncating them, for
+vertical tab bars only (see :opt:`tab_bar_edge`). Can be :code:`no` (the
+default) to truncate with an ellipsis as before, :code:`yes` to wrap at the
+width of the tab bar, or a number to wrap at that many cells, for example::
+
+    tab_title_wrap yes
+    tab_title_wrap 20
+
+Wrapping is limited by :opt:`tab_title_max_lines`, so it has no visible effect
+while that is :code:`1`. When a title needs more lines than are allowed, the
+last line it is given is truncated with an ellipsis. Explicit newlines in
+:opt:`tab_title_template` still start a new line, and each of the resulting
+lines is wrapped independently.
+""",
+)
+
+opt(
     'tab_title_template',
     '"{fmt.fg.red}{bell_symbol}{activity_symbol}{secure_input_symbol}{fmt.fg.tab}{tab.last_focused_progress_percent}{title}"',
     option_type='tab_title_template',
@@ -2258,6 +2300,8 @@ use :code:`{sup.index}`. All data available is:
 :code:`tab.progress_percent`
     If a command running in a window reports the progress for a task, show this progress as a percentage
     from all windows in the tab, averaged. Empty string is no progress is reported.
+:code:`tab.children_mem_usage`
+    The current memory usage of all child process of the tab and their descendants
 :code:`custom`
     This will call a function named :code:`draw_title(data)` from the file :file:`tab_bar.py` placed in
     the kitty config directory. The function will be passed a dictionary of data, the same data that

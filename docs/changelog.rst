@@ -180,10 +180,37 @@ Detailed list of changes
 -------------------------------------
 
 
-0.48.2 [future]
+0.48.3 [future]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Wayland: Fix the first movement of the scroll wheel after reversing direction
+  often not scrolling, with high resolution wheels such as the Logitech MX
+  Master 3 (:pull:`10306`)
+
+- Vertical tabs: Improve handling of multi-line tab titles. Controlled via two new options:
+  :opt:`tab_title_max_lines` and :opt:`tab_title_template` (:pull:`10303`)
+
+- Vertical tabs: Improve rendering of tabs when using the ``fade`` :opt:`tab_bar_style`
+
+- :opt:`remember_window_size` now also remembers window maximized state (:pull:`10308`)
+
+
+0.48.2 [2026-07-30]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - Wayland: Fix regression in previous release that broke drag and drop on Plasma (:iss:`10284`)
+
+- diff kitten: Fix a rare crash when showing a large diff due to incorrect locking when highlighting
+
+- Allow the private DCS kitty-echo escape code to only echo numbers
+
+- Linux: Fix an approx 1MB memory leak when reloading the config, introduced in version 0.40.0 (:iss:`10290`)
+
+- Desktop file chooser integration: when the specified directory does not exist, open file chooser at home directory (:iss:`10292`)
+
+- Add support for `terminal visibility reports <https://rockorager.dev/misc/visibility-reports/>`__
+
+- :opt:`tab_title_template`: Add a field that evaluates to the total memory used by all child processes in the tab (:iss:`10293`)
 
 
 0.48.1 [2026-07-24]

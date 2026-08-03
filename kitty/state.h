@@ -465,6 +465,10 @@ typedef struct OSWindow {
     CloseRequest close_request;
     bool is_layer_shell, hide_on_focus_loss;
     struct { int x, y; } last_drag_event;
+    struct {
+        double pending_pixels_x, pending_pixels_y;
+        int last_v120_dir_x, last_v120_dir_y;
+    } scroll;
 } OSWindow;
 
 static inline float
@@ -566,6 +570,8 @@ void update_os_window_references(void);
 void mark_os_window_for_close(OSWindow* w, CloseRequest cr);
 void update_os_window_viewport(OSWindow *window, bool notify_boss);
 bool should_os_window_be_rendered(OSWindow* w);
+bool is_os_window_potentially_visible(OSWindow* w);
+void update_os_window_visibility_reports(OSWindow *w);
 void wakeup_main_loop(void);
 bool make_window_context_current(id_type);
 void hide_mouse(OSWindow *w);
