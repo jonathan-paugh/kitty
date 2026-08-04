@@ -41,6 +41,7 @@ update_cursor_trail_target(CursorTrail *ct, Window *w, ndc_coords g) {
         case CURSOR_BLOCK:
         case CURSOR_HOLLOW:
         case CURSOR_BEAM:
+        case CURSOR_DASHED_BEAM:
         case CURSOR_UNDERLINE:
             left = g.xstart + cursor_x * g.dx;
             bottom = g.ystart - (cursor_y + 1) * g.dy;
@@ -54,6 +55,7 @@ update_cursor_trail_target(CursorTrail *ct, Window *w, ndc_coords g) {
             top = bottom + g.dy;
             break;
         case CURSOR_BEAM:
+        case CURSOR_DASHED_BEAM:
             right = left + g.dx / WD.screen->cell_size.width * OPT(cursor_beam_thickness);
             top = bottom + g.dy;
             break;

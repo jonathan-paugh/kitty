@@ -28,7 +28,7 @@ static int __eq__(Cursor *a, Cursor *b) {
 }
 #undef EQ
 
-static const char* cursor_names[NUM_OF_CURSOR_SHAPES] = { "NO_SHAPE", "BLOCK", "BEAM", "UNDERLINE", "HOLLOW" };
+static const char* cursor_names[NUM_OF_CURSOR_SHAPES] = { "NO_SHAPE", "BLOCK", "BEAM", "UNDERLINE", "HOLLOW", "DASHED_BEAM" };
 
 #define BOOL(x) ((x) ? Py_True : Py_False)
 static PyObject *
