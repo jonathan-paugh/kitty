@@ -2786,7 +2786,12 @@ class Window:
             if self.keyboard_cursor_anchor is None:
                 self.keyboard_cursor_anchor = pos
                 screen.start_selection(pos[0], pos[1])
-            screen.update_selection(x, y, True, False)
+            # Finalize the drag each move (ended=True). in_progress must not linger
+            # between key pulses: the mouse handlers treat a lingering in-progress
+            # selection as still being dragged, so hovering the mouse would keep
+            # extending the selection to the pointer position. The keyboard anchor
+            # above keeps the selection extendable across moves regardless.
+            screen.update_selection(x, y, True, True)
         else:
             self.keyboard_cursor_anchor = None
             screen.clear_selection()
