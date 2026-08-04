@@ -225,6 +225,20 @@ add_hollow_cursor(uint8_t *buf, FontCellMetrics fcm, double dpi_x, double dpi_y)
     return ans;
 }
 
+DecorationGeometry
+add_dashed_beam_cursor(uint8_t *buf, FontCellMetrics fcm, double dpi_x) {
+    unsigned width = max(1u, min((unsigned)(round(OPT(cursor_beam_thickness) * dpi_x / 72.0)), fcm.cell_width));
+    const unsigned dash_height = max(1u, fcm.cell_height / 8);
+    for (unsigned y = 0; y < fcm.cell_height; y++) {
+        const bool is_gap = ((y / dash_height) & 1u) != 0;
+        if (is_gap) continue;
+        const unsigned offset = y * fcm.cell_width;
+        memset(buf + offset, 0xff, width);
+    }
+    DecorationGeometry ans = {.height=fcm.cell_height};
+    return ans;
+}
+
 // }}}
 
 typedef struct Range {

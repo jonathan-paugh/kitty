@@ -401,7 +401,21 @@ opt(
     long_text="""
 Defines the text cursor shape when the OS window is not focused. The unfocused
 cursor shape can be one of :code:`block`, :code:`beam`, :code:`underline`,
-:code:`hollow` and :code:`unchanged` (leave the cursor shape as it is).
+:code:`hollow`, :code:`dashed-beam` and :code:`unchanged` (leave the cursor
+shape as it is). Note that :code:`dashed-beam` is only valid as an unfocused
+shape, it cannot be set by applications via escape codes.
+""",
+)
+
+opt(
+    'cursor_unfocused_opacity',
+    '1.0',
+    option_type='unit_float',
+    ctype='float',
+    long_text="""
+The opacity of the cursor when the OS window is not focused, a value between
+zero and one. This is applied on top of whatever unfocused shape is selected by
+:opt:`cursor_shape_unfocused`, so it works with any of them.
 """,
 )
 

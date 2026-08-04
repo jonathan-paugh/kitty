@@ -348,6 +348,7 @@ option_names = (
     'cursor_trail_decay',
     'cursor_trail_start_threshold',
     'cursor_underline_thickness',
+    'cursor_unfocused_opacity',
     'default_pointer_shape',
     'detect_urls',
     'dim_opacity',
@@ -571,6 +572,7 @@ class Options:
     cursor_trail_decay: tuple[float, float] = (0.1, 0.4)
     cursor_trail_start_threshold: tuple[int, int] = (2, 2)
     cursor_underline_thickness: float = 2.0
+    cursor_unfocused_opacity: float = 1.0
     default_pointer_shape: choices_for_default_pointer_shape = 'beam'
     detect_urls: bool = True
     dim_opacity: float = 0.4

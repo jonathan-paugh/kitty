@@ -508,6 +508,7 @@ cell_update_uniform_block(ssize_t vao_idx, Screen *screen, int uniform_buffer, i
     // Cursor position
     Line *line_for_cursor = NULL;
     rd->cursor_opacity = MAX(0, MIN(cursor->cursor_opacity, 1));
+    if (!cursor->is_focused) rd->cursor_opacity *= OPT(cursor_unfocused_opacity);
     rd->blink_opacity = MAX(0, MIN(cursor->text_blink_opacity, 1));
     if (rd->cursor_opacity != 0 && cursor->is_visible) {
         rd->cursor_x1 = cursor->x, rd->cursor_y1 = cursor->y;
@@ -534,6 +535,8 @@ cell_update_uniform_block(ssize_t vao_idx, Screen *screen, int uniform_buffer, i
             const bool large_cursor = ((cursor_cell = &line_for_cursor->cpu_cells[cursor->x])->is_multicell) && cursor_cell->x == 0 && cursor_cell->y == 0;
             if (large_cursor) {
                 switch(cs) {
+                    case CURSOR_DASHED_BEAM:
+                        // fallthrough
                     case CURSOR_BEAM:
                         rd->cursor_y2 += cursor_cell->scale - 1; break;
                     case CURSOR_UNDERLINE:

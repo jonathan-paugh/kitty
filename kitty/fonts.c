@@ -2032,7 +2032,7 @@ static void
 send_prerendered_sprites(FontGroup *fg) {
     // blank cell
     ensure_canvas_can_fit(fg, 1, 1);
-    DecorationMetadata dm = {.start_idx=5};
+    DecorationMetadata dm = {.start_idx=6};
     current_send_sprite_to_gpu(fg, fg->canvas.buf, dm, fg->fcm);
     const unsigned cell_area = fg->fcm.cell_height * fg->fcm.cell_width;
     RAII_ALLOC(uint8_t, alpha_mask, malloc(cell_area));
@@ -2046,12 +2046,13 @@ send_prerendered_sprites(FontGroup *fg) {
     current_send_sprite_to_gpu(fg, fg->canvas.buf, dm, fg->fcm);
 
     // If you change the mapping of these cells you will need to change
-    // BEAM_IDX in shader.c and STRIKE_SPRITE_INDEX in
-    // shaders.py and MISSING_GLYPH in font.c and dec_idx above
+    // cursor_shape_map in cell_vertex.glsl and
+    // MISSING_GLYPH in fonts.c and dec_idx above
     do_one(add_missing_glyph(alpha_mask, fg->fcm));
     do_one(add_beam_cursor(alpha_mask, fg->fcm, fg->logical_dpi_x));
     do_one(add_underline_cursor(alpha_mask, fg->fcm, fg->logical_dpi_y));
     do_one(add_hollow_cursor(alpha_mask, fg->fcm, fg->logical_dpi_x, fg->logical_dpi_y));
+    do_one(add_dashed_beam_cursor(alpha_mask, fg->fcm, fg->logical_dpi_x));
     RunFont rf = {.scale=1};
     Region rg = {.bottom = fg->fcm.cell_height, .right = fg->fcm.cell_width};
     sprite_index actual_dec_idx = index_for_decorations(fg, rf, rg, rg, fg->fcm).start_idx;

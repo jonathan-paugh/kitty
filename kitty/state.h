@@ -60,6 +60,7 @@ typedef struct Options {
     bool enable_audio_bell;
     CursorShape cursor_shape, cursor_shape_unfocused;
     float cursor_beam_thickness;
+    float cursor_unfocused_opacity;
     float cursor_underline_thickness;
     monotonic_t cursor_trail;
     float cursor_trail_decay_fast;

@@ -39,12 +39,13 @@ const uvec2 cell_pos_map[] = uvec2[4](
     uvec2(0u, 1u),  // left, bottom
     uvec2(0u, 0u)   // left, top
 );
-const uint cursor_shape_map[] = uint[5](  // maps cursor shape to foreground sprite index
+const uint cursor_shape_map[] = uint[6](  // maps cursor shape to foreground sprite index
    0u,  // NO_CURSOR
    0u,  // BLOCK  (this is rendered as background)
    2u,  // BEAM
    3u,  // UNDERLINE
-   4u   // UNFOCUSED
+   4u,  // HOLLOW (default UNFOCUSED shape)
+   5u   // DASHED_BEAM (fork-only UNFOCUSED shape)
 );
 
 

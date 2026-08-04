@@ -958,6 +958,9 @@ class Parser:
     def cursor_underline_thickness(self, val: str, ans: dict[str, typing.Any]) -> None:
         ans['cursor_underline_thickness'] = positive_float(val)
 
+    def cursor_unfocused_opacity(self, val: str, ans: dict[str, typing.Any]) -> None:
+        ans['cursor_unfocused_opacity'] = unit_float(val)
+
     def default_pointer_shape(self, val: str, ans: dict[str, typing.Any]) -> None:
         val = val.lower()
         if val not in self.choices_for_default_pointer_shape:
