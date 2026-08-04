@@ -56,7 +56,7 @@ def generate_class(defn: Definition, loc: str) -> tuple[str, str]:
     def option_type_data(option: Option | MultiOption) -> tuple[Callable[[Any], Any], str]:
         func = option.parser_func
         if func.__module__ == 'builtins':
-            assert isinstance(func, types.FunctionType)
+            # builtin classes such as str/float/int are legitimate parsers, not FunctionType
             return func, func.__name__
         th = get_type_hints(func)
         rettype = th['return']
@@ -131,7 +131,6 @@ def generate_class(defn: Definition, loc: str) -> tuple[str, str]:
                 params = dict(inspect.signature(func).parameters)
             except Exception:
                 params = {}
-            assert isinstance(func, types.FunctionType)
             if 'dict_with_parse_results' in params:
                 t(f'        {func.__name__}(val, ans)')
             else:
