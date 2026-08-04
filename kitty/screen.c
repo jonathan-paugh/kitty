@@ -4008,7 +4008,12 @@ screen_apply_selection(Screen *self, void *address_, size_t size) {
     address += (size_t)offset * self->columns; size -= (size_t)offset * self->columns;
     ExtraCursors *ec = self->paused_rendering.expires_at ? &self->paused_rendering.extra_cursors : &self->extra_cursors;
     for (unsigned i = 0; i < ec->count; i++) {
-        if (ec->locations[i].cell < size) address[ec->locations[i].cell] |= (ec->locations[i].shape & 7) << 2;
+        if (ec->locations[i].cell >= size) continue;
+        // NO_CURSOR_SHAPE means follow the main cursor's effective shape, so the
+        // extra cursor picks up unfocused overrides like dashed-beam. Explicit
+        // shapes fit in the two lower bits; larger values would corrupt bit 4.
+        if (ec->locations[i].shape == NO_CURSOR_SHAPE) address[ec->locations[i].cell] |= (1 << 4);
+        else address[ec->locations[i].cell] |= (MIN(ec->locations[i].shape, CURSOR_UNDERLINE) & 3) << 2;
     }
     ec->dirty = false;
 }

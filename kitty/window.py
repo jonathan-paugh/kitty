@@ -2786,19 +2786,25 @@ class Window:
             if self.keyboard_cursor_anchor is None:
                 self.keyboard_cursor_anchor = pos
                 screen.start_selection(pos[0], pos[1])
-            screen.update_selection(x, y, True, False)
+            # Finalize the drag each move (ended=True). in_progress must not linger
+            # between key pulses: the mouse handlers treat a lingering in-progress
+            # selection as still being dragged, so hovering the mouse would keep
+            # extending the selection to the pointer position. The keyboard anchor
+            # above keeps the selection extendable across moves regardless.
+            screen.update_selection(x, y, True, True)
         else:
             self.keyboard_cursor_anchor = None
             screen.clear_selection()
         # Draw our cursor where we are and hide the terminal's own, so it reads as one
         # cursor that moved rather than two.
-        # cursor.shape is 0 when the window is using the configured default, so fall back
-        # to that rather than assuming a block.
+        # Shape 0 tells the renderer to follow the main cursor's effective shape, so
+        # the fake cursor mirrors DECSCUSR changes made by the application and the
+        # unfocused cursor_shape_unfocused override (for example dashed-beam).
         # The suppression is render-side rather than the DECTCEM mode (cursor_visible)
         # because that mode belongs to the application: a redrawing program re-shows
         # the cursor with it, making the hidden cursor flicker back while we are in
         # the scrollback.
-        screen.set_extra_cursor(x, y, screen.cursor.shape or get_options().cursor_shape or 1)
+        screen.set_extra_cursor(x, y, 0)
         screen.suppress_cursor_render = True
         self.keyboard_cursor_scrolled_by = screen.scrolled_by
         self.keyboard_cursor_history_total = screen.history_line_added_total
@@ -2823,7 +2829,7 @@ class Window:
         x, y = pos[0], pos[1] + delta
         self.keyboard_cursor_pos = (x, y)
         if 0 <= y < screen.lines:
-            screen.set_extra_cursor(x, y, screen.cursor.shape or get_options().cursor_shape or 1)
+            screen.set_extra_cursor(x, y, 0)
         else:
             # Keep the logical position so the next keyboard move scrolls back to
             # it, but do not draw a cursor over unrelated content.
