@@ -510,6 +510,11 @@ cell_update_uniform_block(ssize_t vao_idx, Screen *screen, int uniform_buffer, i
     rd->cursor_opacity = MAX(0, MIN(cursor->cursor_opacity, 1));
     if (!cursor->is_focused) rd->cursor_opacity *= OPT(cursor_unfocused_opacity);
     rd->blink_opacity = MAX(0, MIN(cursor->text_blink_opacity, 1));
+    // The shape is needed even when the main cursor is invisible or suppressed:
+    // extra cursors set to follow the main shape must see the unfocused override
+    // (dashed-beam) too.
+    const CursorShape cs = (cursor->is_focused || OPT(cursor_shape_unfocused) == NO_CURSOR_SHAPE) ? cursor->shape : OPT(cursor_shape_unfocused);
+    rd->cursor_shape = cs;
     if (rd->cursor_opacity != 0 && cursor->is_visible) {
         rd->cursor_x1 = cursor->x, rd->cursor_y1 = cursor->y;
         rd->cursor_x2 = cursor->x, rd->cursor_y2 = cursor->y;
@@ -517,8 +522,6 @@ cell_update_uniform_block(ssize_t vao_idx, Screen *screen, int uniform_buffer, i
             rd->cursor_y1 += 1;
             rd->cursor_y2 += 1;
         }
-        CursorShape cs = (cursor->is_focused || OPT(cursor_shape_unfocused) == NO_CURSOR_SHAPE) ? cursor->shape : OPT(cursor_shape_unfocused);
-        rd->cursor_shape = cs;
         color_type cell_fg = rd->default_fg, cell_bg = rd->bg_colors0;
         index_type cell_color_x = cursor->x;
         bool reversed = false;
@@ -567,7 +570,6 @@ cell_update_uniform_block(ssize_t vao_idx, Screen *screen, int uniform_buffer, i
         // store last rendered cursor color for trail rendering
         screen->last_rendered.cursor_bg = rd->main_cursor_bg;
     } else {
-        rd->cursor_shape = 0;
         rd->cursor_x1 = screen->columns + 1; rd->cursor_x2 = screen->columns;
         rd->cursor_y1 = screen->lines + 1; rd->cursor_y2 = screen->lines;
     }
