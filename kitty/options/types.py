@@ -69,6 +69,7 @@ option_names = (
     'bold_font',
     'bold_italic_font',
     'box_drawing_scale',
+    'claude_context_breakdown',
     'clear_all_mouse_actions',
     'clear_all_shortcuts',
     'clear_selection_on_clipboard_loss',
@@ -549,6 +550,7 @@ class Options:
     bold_font: FontSpec = FontSpec(family=None, style=None, postscript_name=None, full_name=None, system='auto', axes=(), variable_name=None, features=(), created_from_string='auto')
     bold_italic_font: FontSpec = FontSpec(family=None, style=None, postscript_name=None, full_name=None, system='auto', axes=(), variable_name=None, features=(), created_from_string='auto')
     box_drawing_scale: tuple[float, float, float, float] = (0.001, 1.0, 1.5, 2.0)
+    claude_context_breakdown: bool = False
     clear_all_mouse_actions: bool = False
     clear_all_shortcuts: bool = False
     clear_selection_on_clipboard_loss: bool = False

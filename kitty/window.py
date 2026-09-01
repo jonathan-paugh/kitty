@@ -254,6 +254,9 @@ def compile_match_query(exp: str, is_simple: bool = True) -> MatchPatternType:
     return pat
 
 
+from .claude_context import mirror_orch_tokens  # Claude context breakdown filter
+
+
 def decode_cmdline(x: str) -> str:
     ctype, sep, val = x.partition('=')
     if ctype == 'cmdline':
@@ -1344,8 +1347,10 @@ class Window:
             if isinstance(val, bytes):
                 val = val.decode('utf-8', 'replace')
             self.user_vars[key] = val = sanitize_control_codes(val).replace('\n', ' ')
+            mirror_orch_tokens(self.screen, key, val)
             self.call_watchers(self.watchers.on_set_user_var, {'key': key, 'value': val})
         else:
+            mirror_orch_tokens(self.screen, key, None)
             self.call_watchers(self.watchers.on_set_user_var, {'key': key, 'value': None})
 
     # screen callbacks {{{

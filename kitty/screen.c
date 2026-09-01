@@ -22,6 +22,7 @@
 #include "charsets.h"
 #include "lineops.h"
 #include "hyperlink.h"
+#include "claude-context.h"
 #include <structmember.h>
 #include <limits.h>
 #include <sys/types.h>
@@ -2221,11 +2222,14 @@ screen_cursor_to_column(Screen *self, unsigned int column) {
     }
 }
 
+// The Claude Code context breakdown filter lives in claude-context.{c,h}.
+
 #define INDEX_UP(add_to_history) \
     linebuf_index(self->linebuf, top, bottom); \
     INDEX_GRAPHICS(-1) \
     if (add_to_history) { \
         /* Only add to history when no top margin has been set */ \
+        screen_annotate_claude_context_row(self, bottom); \
         linebuf_init_line(self->linebuf, bottom); \
         historybuf_add_line(self->historybuf, self->linebuf->line, &self->as_ansi_buf); \
         self->history_line_added_count++; \
@@ -3748,6 +3752,9 @@ screen_update_cell_data(Screen *self, void *address, FONTS_DATA_HANDLE fonts_dat
         }
         return;
     }
+    // Runs before the dirty flags are consumed below, so an annotated row renders in this
+    // same frame rather than waiting for the next one.
+    screen_annotate_claude_context_dirty_rows(self);
     const bool is_overlay_active = screen_is_overlay_active(self);
     unsigned int history_line_added_count = self->history_line_added_count;
     screen_reset_dirty(self);
@@ -6255,6 +6262,9 @@ current_selections(Screen *self, PyObject *a UNUSED) {
 }
 
 WRAP0(update_only_line_graphics_data)
+// Exposed for tests: screen_update_cell_data itself needs a fonts data handle and a GPU
+// buffer, so the dirty-row scan it performs is only reachable from Python through this.
+WRAP0(annotate_claude_context_dirty_rows)
 WRAP0(bell)
 
 static PyObject*
@@ -6476,6 +6486,7 @@ static PyMethodDef methods[] = {
     MND(marked_cells, METH_NOARGS)
     MND(scroll_to_next_mark, METH_VARARGS)
     MND(update_only_line_graphics_data, METH_NOARGS)
+    MND(annotate_claude_context_dirty_rows, METH_NOARGS)
     MND(bell, METH_NOARGS)
     MND(mark_potential_url_drag, METH_NOARGS)
     MND(current_selections, METH_NOARGS)
@@ -6524,6 +6535,7 @@ static PyMemberDef members[] = {
     {"history_line_added_count", T_UINT, offsetof(Screen, history_line_added_count), 0, "history_line_added_count"},
     {"history_line_added_total", T_UINT, offsetof(Screen, history_line_added_total), READONLY, "history_line_added_total"},
     {"suppress_cursor_render", T_BOOL, offsetof(Screen, suppress_cursor_render), 0, "suppress_cursor_render"},
+    {"claude_orch_tokens", T_COL, offsetof(Screen, claude_orch_tokens), 0, "claude_orch_tokens"},
     {NULL}
 };
 
