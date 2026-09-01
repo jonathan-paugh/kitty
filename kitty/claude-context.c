@@ -30,7 +30,9 @@
 
 static const char claude_context_label[] = " System prompt:";
 static const char claude_context_header[] = "Estimated usage by category";
-static const char claude_context_header_prefix[] = "Orchestrator layer: ";
+// Leading space because the bullet is written immediately before it, matching the report's
+// own "<bullet> System prompt: " shape.
+static const char claude_context_header_prefix[] = " Orchestrator layer: ";
 static const char claude_context_units[] = " tokens (";
 
 /**
@@ -230,21 +232,36 @@ claude_context_match_prompt_row(const char_type *row, index_type columns, uint32
 }
 
 /**
- * Writes ASCII over a run of cells and blanks the remainder of the old text, so a
- * replacement shorter than what it replaces cannot leave a tail behind.
+ * Writes one cell, taking its colours and SGR attributes from an existing cell so the
+ * rewritten text sits in the report's own palette instead of a colour picked here. A NULL
+ * style means the terminal default, which is what Claude Code uses for a row's label.
  */
 static void
-claude_context_write(Screen *self, CPUCell *cpu_cells, GPUCell *gpu_cells, index_type x, const char *text, index_type len, index_type clear_through) {
-    for (index_type i = 0; i < len; i++) {
-        const index_type at = x + i;
-        if (at >= self->columns) return;  // unreachable given the callers' bounds checks
-        zero_at_ptr(cpu_cells + at); zero_at_ptr(gpu_cells + at);
-        cell_set_char(cpu_cells + at, (char_type)text[i]);
-        gpu_cells[at].attrs.dim = true;
+claude_context_put(CPUCell *cpu_cells, GPUCell *gpu_cells, index_type at, char_type codepoint, const GPUCell *style) {
+    zero_at_ptr(cpu_cells + at);
+    zero_at_ptr(gpu_cells + at);
+    if (style) {
+        gpu_cells[at].fg = style->fg;
+        gpu_cells[at].bg = style->bg;
+        gpu_cells[at].decoration_fg = style->decoration_fg;
+        // The sprite index stays zero: it belongs to the glyph that was there, not to ours.
+        gpu_cells[at].attrs = style->attrs;
+        gpu_cells[at].sprite_idx = 0;
     }
-    // Zeroed rather than filled with spaces: a zeroed cell reads as genuinely empty, so the
-    // row does not grow a trailing run of blanks where the old text used to be.
-    for (index_type at = x + len; at <= clear_through && at < self->columns; at++) {
+    cell_set_char(cpu_cells + at, codepoint);
+}
+
+static index_type
+claude_context_put_text(Screen *self, CPUCell *cpu_cells, GPUCell *gpu_cells, index_type x, const char *text, index_type len, const GPUCell *style) {
+    for (index_type i = 0; i < len && x < self->columns; i++, x++) {
+        claude_context_put(cpu_cells, gpu_cells, x, (char_type)text[i], style);
+    }
+    return x;
+}
+
+static void
+claude_context_clear(Screen *self, CPUCell *cpu_cells, GPUCell *gpu_cells, index_type from, index_type through) {
+    for (index_type at = from; at <= through && at < self->columns; at++) {
         zero_at_ptr(cpu_cells + at); zero_at_ptr(gpu_cells + at);
     }
 }
@@ -254,16 +271,31 @@ claude_context_rewrite_header(Screen *self, CPUCell *cpu_cells, GPUCell *gpu_cel
     index_type header_x = 0;
     if (!claude_context_match_header(row, self->columns, &header_x)) return false;
     const index_type prefix_len = (index_type)(sizeof(claude_context_header_prefix) - 1);
-    char text[CLAUDE_CONTEXT_MAX_TEXT];
-    memcpy(text, claude_context_header_prefix, prefix_len);
-    const index_type value_len = claude_context_format_tokens(orch_tokens, text + prefix_len, sizeof(text) - prefix_len);
+    char value[CLAUDE_CONTEXT_MAX_TEXT];
+    const index_type value_len = claude_context_format_tokens(orch_tokens, value, sizeof(value));
     if (!value_len) return false;
-    const index_type len = prefix_len + value_len;
+    // Laid out like the report's own data rows, which read as bullet, then label in the
+    // terminal default, then value in the report's grey. Written as three runs so each takes
+    // the right colour, rather than one run in a colour chosen here.
+    const index_type len = 1 + prefix_len + value_len;
     const index_type header_len = (index_type)(sizeof(claude_context_header) - 1);
     if (header_x + len > self->columns) return false;
+    // The grey the report uses for a value is on this row already, in the grid squares to the
+    // left of the header, so take it from there instead of hardcoding a colour that would
+    // stop matching the moment the theme changed.
+    index_type grey_x = 0;
+    while (grey_x < self->columns && claude_context_is_blank(row[grey_x])) grey_x++;
+    // Copied by value: the cells it points at are about to be overwritten.
+    GPUCell grey = {0};
+    if (grey_x < self->columns) grey = gpu_cells[grey_x];
+    index_type x = header_x;
+    claude_context_put(cpu_cells, gpu_cells, x, CLAUDE_CONTEXT_BULLET, &grey);
+    x++;
+    x = claude_context_put_text(self, cpu_cells, gpu_cells, x, claude_context_header_prefix, prefix_len, NULL);
+    x = claude_context_put_text(self, cpu_cells, gpu_cells, x, value, value_len, &grey);
     // Clearing the full width of the old header is what stops a shorter replacement leaving
     // its tail behind as "Orchestrator layer: 15.4kategory".
-    claude_context_write(self, cpu_cells, gpu_cells, header_x, text, len, header_x + header_len - 1);
+    claude_context_clear(self, cpu_cells, gpu_cells, x, header_x + header_len - 1);
     return true;
 }
 
@@ -283,7 +315,11 @@ claude_context_rewrite_prompt_row(Screen *self, CPUCell *cpu_cells, GPUCell *gpu
                              (unsigned int)(percent_tenths / 10u), (unsigned int)(percent_tenths % 10u));
     if (len < 1 || (size_t)len >= sizeof(text)) return false;
     if (parsed.value_x + (index_type)len > self->columns) return false;
-    claude_context_write(self, cpu_cells, gpu_cells, parsed.value_x, text, (index_type)len, parsed.last_non_blank);
+    // The whole tail we replace is one colour in the report, so carrying the first cell's
+    // style across the replacement leaves the row looking untouched apart from the number.
+    const GPUCell style = gpu_cells[parsed.value_x];
+    const index_type end = claude_context_put_text(self, cpu_cells, gpu_cells, parsed.value_x, text, (index_type)len, &style);
+    claude_context_clear(self, cpu_cells, gpu_cells, end, parsed.last_non_blank);
     return true;
 }
 

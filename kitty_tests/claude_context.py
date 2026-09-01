@@ -16,7 +16,9 @@ CLAUDE_CONTEXT_HEADER_ROW = '⛶ ' * 22 + '   Estimated usage by category'
 # 22k of the row's 25.1k, leaving 3.1k and a percentage scaled by that same ratio.
 CLAUDE_ORCH_TOKENS = 22000
 CLAUDE_CONTEXT_REWRITTEN_ROW = '⛶ ' * 22 + '   ⛁ System prompt: 3.1k tokens (0.3%)'
-CLAUDE_CONTEXT_REWRITTEN_HEADER = '⛶ ' * 22 + '   Orchestrator layer: 22k'
+# Laid out like the report's own data rows: bullet, label in the terminal default,
+# then the value in the grey the report uses for values.
+CLAUDE_CONTEXT_REWRITTEN_HEADER = '⛶ ' * 22 + '   ⛁ Orchestrator layer: 22k'
 # Rows from the same report that share its shape and must never be annotated.
 CLAUDE_CONTEXT_SIBLING_ROWS = (
     '⛁ Messages: 7 tokens (0.0%)',
@@ -213,16 +215,49 @@ class TestClaudeContext(BaseTest):
             self.ae(str(s.line(0)), expected)
             self.ae(s.line(0).as_ansi(), undimmed)
 
-    def test_claude_context_breakdown_uses_a_fixed_dim_style(self):
+    def test_claude_context_breakdown_header_carries_the_row_bullet(self):
+        s = self.claude_context_screen(row=CLAUDE_CONTEXT_HEADER_ROW)
+        s.annotate_claude_context_dirty_rows()
+        self.assertIn('⛁ Orchestrator layer:', str(s.line(0)))
+
+    def test_claude_context_breakdown_does_not_force_a_dim_style(self):
+        # It used to write everything dim, which rendered grey where the report's own label
+        # is the terminal default. Clearing dim afterwards must therefore change nothing.
         s = self.claude_context_screen()
-        s.select_graphic_rendition(1)  # the cursor is bold by the time the filter runs
         s.annotate_claude_context_dirty_rows()
         styled = s.line(0).as_ansi()
         self.assertIn('3.1k', styled)
+        s.linebuf.set_attribute('dim', 0)
+        self.ae(s.line(0).as_ansi(), styled)
+
+    def test_claude_context_breakdown_inherits_the_replaced_styling(self):
+        # The value it writes takes the styling of the text it replaced. Only the value is
+        # drawn dim here: dimming the whole row instead would make the assertion pass on the
+        # untouched cells no matter what the filter wrote.
+        s = self.create_screen(cols=142, lines=5, options={'claude_context_breakdown': True})
+        s.claude_orch_tokens = CLAUDE_ORCH_TOKENS
+        # The separating space is drawn BEFORE dim is enabled: it sits outside the region the
+        # filter overwrites, so leaving it dim would keep the assertion alive on a cell the
+        # filter never touched.
+        s.draw('⛶ ' * 22 + '   ⛁ System prompt: ')
+        s.select_graphic_rendition(2)  # dim, covering exactly the cells the filter replaces
+        s.draw('25.1k tokens (2.5%)')
+        s.select_graphic_rendition(0)
+        self.ae(str(s.line(0)), CLAUDE_CONTEXT_ROW)
+        s.annotate_claude_context_dirty_rows()
+        self.assertIn('3.1k', str(s.line(0)))
+        styled = s.line(0).as_ansi()
+        s.linebuf.set_attribute('dim', 0)
+        self.assertNotEqual(s.line(0).as_ansi(), styled, 'the rewritten value did not keep the dim it replaced')
+
+    def test_claude_context_breakdown_ignores_the_cursor_style(self):
+        # Whatever SGR the cursor happens to carry when the filter runs must not leak in.
+        s = self.claude_context_screen()
+        s.select_graphic_rendition(1)  # bold
+        s.annotate_claude_context_dirty_rows()
+        styled = s.line(0).as_ansi()
         s.linebuf.set_attribute('bold', 0)
         self.ae(s.line(0).as_ansi(), styled)
-        s.linebuf.set_attribute('dim', 0)
-        self.assertNotEqual(s.line(0).as_ansi(), styled)
 
     def test_claude_context_breakdown_leaves_the_grid_alone(self):
         s = self.claude_context_screen()
