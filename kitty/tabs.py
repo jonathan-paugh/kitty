@@ -725,8 +725,10 @@ class Tab:  # {{{
     def _add_window(
         self, window: Window, location: str | None = None, overlay_for: int | None = None,
         overlay_behind: bool = False, bias: float | None = None, next_to: Window | None = None,
+        make_active: bool = True,
     ) -> None:
-        self.current_layout.add_window(self.windows, window, location, overlay_for, put_overlay_behind=overlay_behind, bias=bias, next_to=next_to)
+        self.current_layout.add_window(
+            self.windows, window, location, overlay_for, put_overlay_behind=overlay_behind, bias=bias, next_to=next_to, make_active=make_active)
         if overlay_behind and (w := self.active_window):
             set_redirect_keys_to_overlay(self.os_window_id, self.id, w.id, window.id)
             buffer_keys_in_window(self.os_window_id, self.id, window.id, True)
@@ -759,6 +761,7 @@ class Tab:  # {{{
         next_to: Window | None = None,
         hold_after_ssh: bool = False,
         startup_command_via_shell_integration: Sequence[str] | str = (),
+        make_active: bool = True,
     ) -> Window:
         cs = WindowCreationSpec(
             use_shell=use_shell, cmd=cmd, has_stdin=bool(stdin), override_title=override_title, cwd_from=cwd_from,
@@ -783,7 +786,9 @@ class Tab:  # {{{
         window.creation_spec = cs
         # Must add child before laying out so that resize_pty succeeds
         get_boss().add_child(window)
-        self._add_window(window, location=location, overlay_for=overlay_for, overlay_behind=overlay_behind, bias=bias, next_to=next_to)
+        self._add_window(
+            window, location=location, overlay_for=overlay_for, overlay_behind=overlay_behind, bias=bias, next_to=next_to,
+            make_active=make_active)
         if marker:
             try:
                 window.set_marker(marker)
@@ -1537,8 +1542,10 @@ class TabManager:  # {{{
         as_neighbor: bool = False,
         empty_tab: bool = False,
         location: str = 'last',
+        make_active: bool = True,
     ) -> Tab:
         idx = len(self.tabs)
+        orig_active_tab = self.active_tab
         tabs = tuple(self.tabs_to_be_shown_in_tab_bar)
         orig_active_tab_idx = 0
         with suppress(ValueError):
@@ -1571,7 +1578,12 @@ class TabManager:  # {{{
                 for i in range(idx, desired_idx, -1):
                     self.swap_tabs(i, i-1)
                 idx = desired_idx
-        self._set_active_tab(idx)
+        if not make_active and orig_active_tab is not None and orig_active_tab in self.tabs:
+            # Inserting a tab shifts the index of every tab after it, so the stored
+            # index would otherwise start pointing at a different tab.
+            self._set_active_tab(self.tabs.index(orig_active_tab), store_in_history=False)
+        else:
+            self._set_active_tab(idx)
         self.mark_tab_bar_dirty()
         return t
 

@@ -425,6 +425,7 @@ class WindowList:
         make_active: bool = True,
         head_of_group: bool = False,
     ) -> WindowGroup:
+        old_active_group = self.active_group
         self.all_windows.append(window)
         self.id_map[window.id] = window
         target_group: WindowGroup | None = None
@@ -448,9 +449,16 @@ class WindowList:
             else:
                 self.groups.append(target_group)
 
+        if not make_active and old_active_group is not None:
+            # Inserting a group shifts the index of every group after it, so the
+            # stored index would otherwise start pointing at a different group.
+            for i, g in enumerate(self.groups):
+                if g is old_active_group:
+                    self._active_group_idx = i
+                    break
         old_active_window = self.active_window
         target_group.add_window(window, head_of_group=head_of_group)
-        if make_active:
+        if make_active or old_active_group is None:
             for i, g in enumerate(self.groups):
                 if g is target_group:
                     self.set_active_group_idx(i, notify=False)

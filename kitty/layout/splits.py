@@ -633,6 +633,7 @@ class Splits(Layout):
         location: str | None,
         bias: float | None = None,
         next_to: WindowType | None = None,
+        make_active: bool = True,
     ) -> None:
         horizontal = self.default_axis_is_horizontal
         after = True
@@ -653,12 +654,12 @@ class Splits(Layout):
                     wwidth = aw.geometry.right - aw.geometry.left
                     wheight = aw.geometry.bottom - aw.geometry.top
                     horizontal = wwidth >= wheight
-                target_group = all_windows.add_window(window, next_to=aw, before=not after)
+                target_group = all_windows.add_window(window, next_to=aw, before=not after, make_active=make_active)
                 parent_pair = pair.split_and_add(group_id, target_group.id, horizontal, after)
                 if bias is not None:
                     parent_pair.bias = bias if parent_pair.one == target_group.id else (1 - bias)
                 return
-        all_windows.add_window(window)
+        all_windows.add_window(window, make_active=make_active)
         g = all_windows.group_for_window(window)
         assert g is not None
         p = self.pairs_root.balanced_add(g.id)
