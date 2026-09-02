@@ -215,6 +215,13 @@ typedef struct {
     // for the terminal's own (keyboard scrollback cursor). Kept separate from the
     // DECTCEM mode so applications toggling cursor visibility cannot re-show it.
     bool suppress_cursor_render;
+    // Size in TOKENS (not thousands) of the orchestrator layer appended to this window's
+    // Claude Code system prompt, mirrored down from the claude_orch_tokens_raw user
+    // variable. Zero means the context breakdown filter is disabled for this window. Kept
+    // here rather than read from Window.user_vars to keep a Python dict lookup off a path
+    // that runs per row. Both triggers are on the main thread, so it needs no locking.
+    // Owned by the feature in claude-context.{c,h}.
+    uint32_t claude_orch_tokens;
     struct {
         bool active;
         DnDCommand metadata;

@@ -121,6 +121,9 @@ class Parser:
     def box_drawing_scale(self, val: str, ans: dict[str, typing.Any]) -> None:
         ans['box_drawing_scale'] = box_drawing_scale(val)
 
+    def claude_context_breakdown(self, val: str, ans: dict[str, typing.Any]) -> None:
+        ans['claude_context_breakdown'] = to_bool(val)
+
     def clear_all_mouse_actions(self, val: str, ans: dict[str, typing.Any]) -> None:
         clear_all_mouse_actions(val, ans)
 

@@ -3253,6 +3253,21 @@ Sub-menus can be created by adding more levels separated by the :code:`::` chara
 """,
 )
 
+opt(
+    'claude_context_breakdown',
+    'no',
+    option_type='to_bool',
+    ctype='bool',
+    long_text="""
+Annotate the :code:`System prompt:` row of Claude Code's :code:`/context` report with the
+size of the appended orchestrator layer, which the reported figure silently includes. The
+size itself comes from the :code:`claude_orch_tokens` user variable, set by the session
+launcher via :code:`kitten @ set-user-vars`, so this option only has an effect in windows
+where that variable holds a non-zero count. Rows are left untouched whenever anything about
+them is unexpected.
+""",
+)
+
 
 egr()  # }}}
 
