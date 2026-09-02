@@ -343,21 +343,22 @@ class Layout:
     def add_window(
         self, all_windows: WindowList, window: WindowType, location: str | None = None,
         overlay_for: int | None = None, put_overlay_behind: bool = False, bias: float | None = None,
-        next_to: WindowType | None = None,
+        next_to: WindowType | None = None, make_active: bool = True,
     ) -> WindowType | None:
         if overlay_for is not None:
             underlay = all_windows.id_map.get(overlay_for)
             if underlay is not None:
                 window.margin, window.padding = underlay.margin.copy(), underlay.padding.copy()
-                all_windows.add_window(window, group_of=overlay_for, head_of_group=put_overlay_behind)
+                all_windows.add_window(window, group_of=overlay_for, head_of_group=put_overlay_behind, make_active=make_active)
                 return underlay
         if location == 'neighbor':
             location = 'after'
-        self.add_non_overlay_window(all_windows, window, location, bias, next_to)
+        self.add_non_overlay_window(all_windows, window, location, bias, next_to, make_active)
         return None
 
     def add_non_overlay_window(
-        self, all_windows: WindowList, window: WindowType, location: str | None, bias: float | None = None, next_to: WindowType | None = None
+        self, all_windows: WindowList, window: WindowType, location: str | None, bias: float | None = None,
+        next_to: WindowType | None = None, make_active: bool = True,
     ) -> None:
         before = False
         next_to = next_to or all_windows.active_window
@@ -371,7 +372,7 @@ class Layout:
                 next_to = None
             elif location == 'last':
                 next_to = None
-        all_windows.add_window(window, next_to=next_to, before=before)
+        all_windows.add_window(window, next_to=next_to, before=before, make_active=make_active)
         if bias is not None:
             idx = all_windows.group_idx_for_window(window)
             if idx is not None:

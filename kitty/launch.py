@@ -132,6 +132,20 @@ Keep the focus on the currently active window instead of switching to the newly
 opened window.
 
 
+--focus-if-active
+type=bool-set
+Focus the newly opened window only when it is created over the window that is
+already active, which is the case for an :term:`overlay <overlay>` over the
+active window. Unlike :option:`--keep-focus <launch --keep-focus>`, which moves
+the focus to the new window and then moves it back, nothing is focused in order
+to be unfocused again: the active OS Window, tab and window are all left exactly
+as they were. In particular the OS Window is never activated or raised, so a
+window created while kitty is in the background does not pull the user away from
+whatever they are doing, possibly from another desktop. Intended for background
+and automated launches. Has no effect on :code:`os-window` and :code:`os-panel`
+types, where activation is up to the window manager.
+
+
 --cwd
 completion=type:directory kwds:current,oldest,last_reported,root
 The working directory for the newly launched child. Use the special value
@@ -484,7 +498,7 @@ def tab_for_window(boss: Boss, opts: LaunchCLIOptions, target_tab: Tab | None, n
                     override_title=opts.os_window_title or None,
                     x=x, y=y)
             tm = boss.os_window_map[oswid]
-        tab = tm.new_tab(empty_tab=True, location=opts.location)
+        tab = tm.new_tab(empty_tab=True, location=opts.location, make_active=not opts.focus_if_active)
         if opts.tab_title:
             tab.set_title(opts.tab_title)
         tab.created_in_session_name = add_to_session
@@ -824,7 +838,8 @@ def _launch(
         with Window.set_ignore_focus_changes_for_new_windows(opts.keep_focus):
             new_window: Window = tab.new_window(
                 env=env or None, watchers=watchers or None, is_clone_launch=is_clone_launch, next_to=next_to,
-                startup_command_via_shell_integration=startup_command_via_shell_integration, **kw)
+                startup_command_via_shell_integration=startup_command_via_shell_integration,
+                make_active=not opts.focus_if_active, **kw)
             new_window.created_in_session_name = add_to_session
             if child_death_callback is not None:
                 boss.monitor_pid(new_window.child.pid or 0, child_death_callback)
@@ -871,6 +886,10 @@ def launch(
     child_death_callback: Callable[[int, Exception | None], None] | None = None,
     startup_command_via_shell_integration: Sequence[str] | str = (),
 ) -> Window | None:
+    if opts.focus_if_active:
+        # Nothing is focused in the first place, so there is no focus to restore and
+        # doing so anyway would activate the OS Window that keep_focus is switching back to.
+        opts.keep_focus = False
     active = boss.active_window
     if opts.keep_focus and active:
         orig, active.ignore_focus_changes = active.ignore_focus_changes, True

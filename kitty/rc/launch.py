@@ -33,6 +33,7 @@ class Launch(RemoteCommand):
     tab_title/str: Title for the new tab
     type/choices.window.tab.os-window.os-panel.overlay.overlay-main.background.clipboard.primary: The type of window to open
     keep_focus/bool: Boolean indicating whether the current window should retain focus or not
+    focus_if_active/bool: Boolean indicating whether the new window should be focused only when created over the active window
     copy_colors/bool: Boolean indicating whether to copy the colors from the current window
     copy_cmdline/bool: Boolean indicating whether to copy the cmdline from the current window
     copy_env/list.str=copy_local_env: List of strings representing the local env vars
