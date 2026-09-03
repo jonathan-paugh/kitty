@@ -1243,6 +1243,18 @@ set_default_window_icon(PyObject UNUSED *self, PyObject *args) {
 }
 
 static PyObject*
+os_window_desktop(PyObject UNUSED *self, PyObject *args) {
+    unsigned long long id;
+    if (!PyArg_ParseTuple(args, "K", &id)) return NULL;
+    OSWindow *os_window = os_window_for_id(id);
+    if (!os_window) { PyErr_Format(PyExc_KeyError, "No OS Window with id: %llu", id); return NULL; }
+    if (global_state.is_apple || global_state.is_wayland || !os_window->handle) Py_RETURN_NONE;
+    int desktop = glfwGetX11WindowDesktop(os_window->handle);
+    if (desktop < 0) Py_RETURN_NONE;
+    return PyLong_FromLong(desktop);
+}
+
+static PyObject*
 set_os_window_icon(PyObject UNUSED *self, PyObject *args) {
     size_t sz;
     unsigned int width, height;
@@ -1737,12 +1749,16 @@ wayland_initial_size_callback(GLFWwindow *window UNUSED, float xscale, float ysc
 
 static PyObject*
 create_os_window(PyObject UNUSED *self, PyObject *args, PyObject *kw) {
-    int x = INT_MIN, y = INT_MIN, window_state = WINDOW_NORMAL, disallow_override_title = 0;
+    int x = INT_MIN, y = INT_MIN, window_state = WINDOW_NORMAL, disallow_override_title = 0, desktop = -1, no_focus_on_map = 0;
     char *title, *wm_class_class, *wm_class_name;
-    PyObject *optional_window_state = NULL, *load_programs = NULL, *get_window_size, *pre_show_callback, *optional_x = NULL, *optional_y = NULL, *layer_shell_config = NULL;
-    static const char* kwlist[] = {"get_window_size", "pre_show_callback", "title", "wm_class_name", "wm_class_class", "window_state", "load_programs", "x", "y", "disallow_override_title", "layer_shell_config", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kw, "OOsss|OOOOpO", (char**)kwlist,
-        &get_window_size, &pre_show_callback, &title, &wm_class_name, &wm_class_class, &optional_window_state, &load_programs, &optional_x, &optional_y, &disallow_override_title, &layer_shell_config)) return NULL;
+    PyObject *optional_window_state = NULL, *load_programs = NULL, *get_window_size, *pre_show_callback, *optional_x = NULL, *optional_y = NULL, *layer_shell_config = NULL, *optional_desktop = NULL;
+    static const char* kwlist[] = {"get_window_size", "pre_show_callback", "title", "wm_class_name", "wm_class_class", "window_state", "load_programs", "x", "y", "disallow_override_title", "layer_shell_config", "desktop", "no_focus_on_map", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "OOsss|OOOOpOOp", (char**)kwlist,
+        &get_window_size, &pre_show_callback, &title, &wm_class_name, &wm_class_class, &optional_window_state, &load_programs, &optional_x, &optional_y, &disallow_override_title, &layer_shell_config, &optional_desktop, &no_focus_on_map)) return NULL;
+    if (optional_desktop && optional_desktop != Py_None) {
+        if (!PyLong_Check(optional_desktop)) { PyErr_SetString(PyExc_TypeError, "desktop must be an int"); return NULL; }
+        desktop = (int) PyLong_AsLong(optional_desktop);
+    }
     GLFWLayerShellConfig *lsc = NULL, lsc_stack = {0};
     if (optional_window_state && optional_window_state != Py_None) {
         if (!PyLong_Check(optional_window_state)) { PyErr_SetString(PyExc_TypeError, "window_state must be an int"); return NULL; }
@@ -1822,6 +1838,9 @@ create_os_window(PyObject UNUSED *self, PyObject *args, PyObject *kw) {
     GLFWwindow *common_context = global_state.num_os_windows ? global_state.os_windows[0].handle : NULL;
     GLFWwindow *temp_window = NULL;
     glfwWindowHint(GLFW_VISIBLE, window_state != WINDOW_HIDDEN && global_state.is_wayland);
+    // glfwShowWindow() asks the window manager to activate the window unless this
+    // is off, which is what drags the user to another desktop when one is created there.
+    if (no_focus_on_map) glfwWindowHint(GLFW_FOCUS_ON_SHOW, false);
     float xscale, yscale;
     double xdpi, ydpi;
     if (global_state.is_wayland) {
@@ -1904,6 +1923,10 @@ create_os_window(PyObject UNUSED *self, PyObject *args, PyObject *kw) {
     if (pret == NULL) return NULL;
     Py_DECREF(pret);
     if (x != INT_MIN && y != INT_MIN) glfwSetWindowPos(glfw_window, x, y);
+    // Must happen before the window is shown: a mapped window can only be moved
+    // between desktops by the window manager, which means being visible on the
+    // wrong one first.
+    if (desktop > -1 && !global_state.is_apple && !global_state.is_wayland) glfwSetX11WindowDesktop(glfw_window, desktop);
     if (!global_state.is_apple && !global_state.is_wayland && window_state != WINDOW_HIDDEN) glfwShowWindow(glfw_window, false);
     if (global_state.is_wayland || global_state.is_apple) {
         float n_xscale, n_yscale;
@@ -3280,6 +3303,7 @@ static PyMethodDef module_methods[] = {
     METHODB(toggle_fullscreen, METH_VARARGS),
     METHODB(toggle_maximized, METH_VARARGS),
     METHODB(change_os_window_state, METH_VARARGS),
+    METHODB(os_window_desktop, METH_VARARGS),
     METHODB(glfw_window_hint, METH_VARARGS),
     METHODB(x11_display, METH_NOARGS),
     METHODB(wayland_compositor_data, METH_NOARGS),

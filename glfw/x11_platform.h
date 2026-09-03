@@ -308,6 +308,7 @@ typedef struct _GLFWlibraryX11
     Atom            NET_WM_WINDOW_OPACITY;
     Atom            NET_WM_CM_Sx;
     Atom            NET_WORKAREA;
+    Atom            NET_WM_DESKTOP;
     Atom            NET_CURRENT_DESKTOP;
     Atom            NET_ACTIVE_WINDOW;
     Atom            NET_FRAME_EXTENTS;

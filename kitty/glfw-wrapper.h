@@ -2564,4 +2564,12 @@ typedef int (*glfwSetX11LaunchCommand_func)(GLFWwindow*, char**, int);
 GFW_EXTERN glfwSetX11LaunchCommand_func glfwSetX11LaunchCommand_impl;
 #define glfwSetX11LaunchCommand glfwSetX11LaunchCommand_impl
 
+typedef int (*glfwGetX11WindowDesktop_func)(GLFWwindow*);
+GFW_EXTERN glfwGetX11WindowDesktop_func glfwGetX11WindowDesktop_impl;
+#define glfwGetX11WindowDesktop glfwGetX11WindowDesktop_impl
+
+typedef void (*glfwSetX11WindowDesktop_func)(GLFWwindow*, int);
+GFW_EXTERN glfwSetX11WindowDesktop_func glfwSetX11WindowDesktop_impl;
+#define glfwSetX11WindowDesktop glfwSetX11WindowDesktop_impl
+
 const char* load_glfw(const char* path);

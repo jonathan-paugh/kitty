@@ -56,6 +56,8 @@ class Launch(RemoteCommand):
     os_window_class/str: WM_CLASS for OS Window
     os_window_state/choices.normal.fullscreen.maximized.minimized: The initial state for OS Window
     os_window_position/str: The position for OS Window
+    os_window_desktop/str: The virtual desktop for OS Window, a number or "source"
+    os_window_monitor/str: The monitor for OS Window, a name or "source"
     color/list.str: list of color specifications such as foreground=red
     watcher/list.str: list of paths to watcher files
     bias/float: The bias with which to create the new window in the current layout

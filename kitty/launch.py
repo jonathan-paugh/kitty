@@ -14,7 +14,18 @@ from .cli import parse_args
 from .cli_stub import LaunchCLIOptions
 from .clipboard import set_clipboard_string, set_primary_selection
 from .constants import is_wayland
-from .fast_data_types import add_timer, get_boss, get_options, get_os_window_title, patch_color_profiles
+from .fast_data_types import (
+    add_timer,
+    current_focused_os_window_id,
+    get_boss,
+    get_options,
+    get_os_window_pos,
+    get_os_window_title,
+    glfw_get_monitor_names,
+    glfw_get_monitor_workarea,
+    os_window_desktop,
+    patch_color_profiles,
+)
 from .options.utils import env as parse_env
 from .tabs import Tab, TabManager
 from .types import LayerShellConfig, OverlayType, run_once
@@ -128,22 +139,27 @@ Where to launch the child process:
 
 --keep-focus --dont-take-focus
 type=bool-set
-Keep the focus on the currently active window instead of switching to the newly
-opened window.
+Never focus the newly opened window, whatever is focused at the time. The active
+OS Window, tab and window are all left exactly as they were, so nothing is
+activated or raised and a window created while kitty is in the background does
+not pull the user away from what they are doing, possibly from another desktop.
+The one exception is an :term:`overlay <overlay>`, which covers the window it is
+created over: leaving the focus on a window the user can no longer see is never
+useful, so overlays follow :option:`--focus-if-active <launch --focus-if-active>`
+instead.
 
 
 --focus-if-active
 type=bool-set
-Focus the newly opened window only when it is created over the window that is
-already active, which is the case for an :term:`overlay <overlay>` over the
-active window. Unlike :option:`--keep-focus <launch --keep-focus>`, which moves
-the focus to the new window and then moves it back, nothing is focused in order
-to be unfocused again: the active OS Window, tab and window are all left exactly
-as they were. In particular the OS Window is never activated or raised, so a
-window created while kitty is in the background does not pull the user away from
-whatever they are doing, possibly from another desktop. Intended for background
-and automated launches. Has no effect on :code:`os-window` and :code:`os-panel`
-types, where activation is up to the window manager.
+Focus the newly opened window only if the :option:`source window
+<launch --source-window>` it is being created from is the window that currently
+has focus. So a window opened from the window you are working in is focused as
+usual, and one opened by something running elsewhere is created quietly and
+waits for you. Since the new window is only ever focused when its source is
+already focused, the OS Window is never activated or raised. Intended for
+launches that the user may or may not be waiting on. Use
+:option:`--keep-focus <launch --keep-focus>` for windows that should never take
+the focus, such as background panels.
 
 
 --cwd
@@ -379,6 +395,26 @@ created OS Window. This may or may not work depending on the policies of the
 desktop environment/window manager. It never works on Wayland.
 
 
+--os-window-desktop
+The virtual desktop on which to place the newly created OS Window, as a number,
+or the special value :code:`source` to use the desktop that the
+:option:`source window <launch --source-window>` is on. By default the window
+manager decides, which in practice means the desktop the user happens to be
+looking at, even when the window is created by a program running on a different
+one. The desktop is set before the window is shown, so it never appears on the
+wrong one first. Only works on X11, as Wayland has no protocol for placing a
+window on a workspace.
+
+
+--os-window-monitor
+The monitor on which to place the newly created OS Window, as a monitor name, or
+the special value :code:`source` to use the monitor that the
+:option:`source window <launch --source-window>` is on. This is implemented by
+positioning the window within that monitor, so it is ignored when
+:option:`--os-window-position <launch --os-window-position>` is also specified,
+and it carries the same caveats.
+
+
 --logo
 completion=type:file ext:png group:"PNG images" relative:conf
 Path to a PNG image to use as the logo for the newly created window. See
@@ -483,7 +519,74 @@ def parse_os_window_position(position: str | None) -> tuple[int | None, int | No
     return int(x), int(y)
 
 
-def tab_for_window(boss: Boss, opts: LaunchCLIOptions, target_tab: Tab | None, next_to: Window | None, add_to_session: str) -> Tab:
+def source_window_has_focus(boss: Boss, source_window: Window | None) -> bool:
+    """Whether the window the launch is coming from is the one that currently has focus.
+
+    Both halves matter: the OS Window has to be the focused one, and the source has to be
+    the active window inside it. Checking only the second returns True for the active
+    window of a kitty the user is not even looking at.
+    """
+    if source_window is None:
+        return False
+    if current_focused_os_window_id() != source_window.os_window_id:
+        return False
+    return boss.active_window is source_window
+
+
+def should_focus_new_window(boss: Boss, opts: LaunchCLIOptions, source_window: Window | None) -> bool:
+    if opts.focus_if_active:
+        return source_window_has_focus(boss, source_window)
+    if opts.keep_focus:
+        # An unfocused overlay hides its source window and leaves the focus on it, so the
+        # user would be typing into something they cannot see. Follow --focus-if-active there.
+        if opts.type in ('overlay', 'overlay-main'):
+            return source_window_has_focus(boss, source_window)
+        return False
+    return True
+
+
+def monitor_workarea_for_point(x: int, y: int) -> tuple[int, int, int, int] | None:
+    for workarea in glfw_get_monitor_workarea():
+        mx, my, mw, mh = workarea
+        if mx <= x < mx + mw and my <= y < my + mh:
+            return mx, my, mw, mh
+    return None
+
+
+def resolve_os_window_placement(opts: LaunchCLIOptions, source_window: Window | None) -> None:
+    """Turn the placement options into the plain desktop number and position kitty creates the window with.
+
+    Done here rather than at creation time because only this function knows the source window.
+    """
+    if opts.os_window_desktop == 'source':
+        opts.os_window_desktop = ''
+        if source_window is not None and not is_wayland():
+            desktop = os_window_desktop(source_window.os_window_id)
+            if desktop is not None:
+                opts.os_window_desktop = str(desktop)
+    if not opts.os_window_monitor or opts.os_window_position or is_wayland():
+        return
+    workarea = None
+    if opts.os_window_monitor == 'source':
+        if source_window is not None:
+            pos = get_os_window_pos(source_window.os_window_id)
+            if pos is not None:
+                workarea = monitor_workarea_for_point(*pos)
+    else:
+        for name, area in zip(glfw_get_monitor_names(), glfw_get_monitor_workarea()):
+            if name == opts.os_window_monitor:
+                workarea = area
+                break
+        else:
+            log_error(f'Ignoring unknown monitor: {opts.os_window_monitor}')
+    if workarea is not None:
+        opts.os_window_position = f'{workarea[0]}x{workarea[1]}'
+
+
+def tab_for_window(
+    boss: Boss, opts: LaunchCLIOptions, target_tab: Tab | None, next_to: Window | None, add_to_session: str,
+    focus_new_window: bool = True,
+) -> Tab:
 
     def create_tab(tm: TabManager | None = None) -> Tab:
         if tm is None:
@@ -496,9 +599,11 @@ def tab_for_window(boss: Boss, opts: LaunchCLIOptions, target_tab: Tab | None, n
                     wname=opts.os_window_name,
                     window_state=opts.os_window_state,
                     override_title=opts.os_window_title or None,
-                    x=x, y=y)
+                    x=x, y=y,
+                    desktop=int(opts.os_window_desktop) if opts.os_window_desktop else None,
+                    no_focus=not focus_new_window)
             tm = boss.os_window_map[oswid]
-        tab = tm.new_tab(empty_tab=True, location=opts.location, make_active=not opts.focus_if_active)
+        tab = tm.new_tab(empty_tab=True, location=opts.location, make_active=focus_new_window)
         if opts.tab_title:
             tab.set_title(opts.tab_title)
         tab.created_in_session_name = add_to_session
@@ -669,6 +774,8 @@ def _launch(
             source_window = qw
             break
     source_child = source_window.child if source_window else None
+    focus_new_window = should_focus_new_window(boss, opts, source_window)
+    resolve_os_window_placement(opts, source_window)
     next_to = boss.active_window
     if opts.next_to:
         for qw in boss.match_windows(opts.next_to, rc_from_window):
@@ -833,13 +940,13 @@ def _launch(
         if force_target_tab and target_tab is not None:
             tab = target_tab
         else:
-            tab = tab_for_window(boss, opts, target_tab, next_to, add_to_session)
+            tab = tab_for_window(boss, opts, target_tab, next_to, add_to_session, focus_new_window)
         watchers = load_watch_modules(opts.watcher)
-        with Window.set_ignore_focus_changes_for_new_windows(opts.keep_focus):
+        with Window.set_ignore_focus_changes_for_new_windows(not focus_new_window):
             new_window: Window = tab.new_window(
                 env=env or None, watchers=watchers or None, is_clone_launch=is_clone_launch, next_to=next_to,
                 startup_command_via_shell_integration=startup_command_via_shell_integration,
-                make_active=not opts.focus_if_active, **kw)
+                make_active=focus_new_window, **kw)
             new_window.created_in_session_name = add_to_session
             if child_death_callback is not None:
                 boss.monitor_pid(new_window.child.pid or 0, child_death_callback)
@@ -855,11 +962,6 @@ def _launch(
             tab.relayout()
         if opts.color:
             apply_colors(new_window, opts.color)
-        if opts.keep_focus:
-            if active:
-                boss.set_active_window(active, switch_os_window_if_needed=True, for_keep_focus=True)
-            if not Window.initial_ignore_focus_changes_context_manager_in_operation:
-                new_window.ignore_focus_changes = False
         if opts.logo:
             new_window.set_logo(opts.logo, opts.logo_position or '', opts.logo_alpha)
         if opts.type == 'overlay-main':
@@ -886,20 +988,11 @@ def launch(
     child_death_callback: Callable[[int, Exception | None], None] | None = None,
     startup_command_via_shell_integration: Sequence[str] | str = (),
 ) -> Window | None:
-    if opts.focus_if_active:
-        # Nothing is focused in the first place, so there is no focus to restore and
-        # doing so anyway would activate the OS Window that keep_focus is switching back to.
-        opts.keep_focus = False
-    active = boss.active_window
-    if opts.keep_focus and active:
-        orig, active.ignore_focus_changes = active.ignore_focus_changes, True
-    try:
-        return _launch(
-            boss, opts, args, target_tab, force_target_tab, is_clone_launch, rc_from_window, base_env,
-            child_death_callback, startup_command_via_shell_integration)
-    finally:
-        if opts.keep_focus and active:
-            active.ignore_focus_changes = orig
+    # Nothing is focused in order to be unfocused again, so there is no focus to restore
+    # and no need to suppress the focus events that restoring used to generate.
+    return _launch(
+        boss, opts, args, target_tab, force_target_tab, is_clone_launch, rc_from_window, base_env,
+        child_death_callback, startup_command_via_shell_integration)
 
 @run_once
 def clone_safe_opts() -> frozenset[str]:

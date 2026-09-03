@@ -560,6 +560,12 @@ load_glfw(const char* path) {
     *(void **) (&glfwSetX11LaunchCommand_impl) = dlsym(handle, "glfwSetX11LaunchCommand");
     if (glfwSetX11LaunchCommand_impl == NULL) dlerror(); // clear error indicator
 
+    *(void **) (&glfwGetX11WindowDesktop_impl) = dlsym(handle, "glfwGetX11WindowDesktop");
+    if (glfwGetX11WindowDesktop_impl == NULL) dlerror(); // clear error indicator
+
+    *(void **) (&glfwSetX11WindowDesktop_impl) = dlsym(handle, "glfwSetX11WindowDesktop");
+    if (glfwSetX11WindowDesktop_impl == NULL) dlerror(); // clear error indicator
+
     return NULL;
 }
 
