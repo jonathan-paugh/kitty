@@ -4001,6 +4001,42 @@ GLFWAPI int glfwSetX11LaunchCommand(GLFWwindow *handle, char **argv, int argc)
     return XSetCommand(_glfw.x11.display, window->x11.handle, argv, argc);
 }
 
+// Which virtual desktop a window is on. -1 when the window manager does not
+// support _NET_WM_DESKTOP or has not set it, which callers treat as "unknown"
+// rather than as a desktop number.
+GLFWAPI int glfwGetX11WindowDesktop(GLFWwindow *handle)
+{
+    _GLFW_REQUIRE_INIT_OR_RETURN(-1);
+    _GLFWwindow* window = (_GLFWwindow*) handle;
+    if (!_glfw.x11.NET_WM_DESKTOP) return -1;
+    unsigned char* value = NULL;
+    int ans = -1;
+    if (_glfwGetWindowPropertyX11(window->x11.handle, _glfw.x11.NET_WM_DESKTOP, XA_CARDINAL, &value) && value) {
+        unsigned long desktop = *((unsigned long*) value);
+        // 0xFFFFFFFF means the window is on every desktop, which is not a
+        // placement any caller can copy onto a new window.
+        if (desktop != 0xFFFFFFFF) ans = (int) desktop;
+    }
+    if (value) XFree(value);
+    return ans;
+}
+
+// Must be called before the window is mapped. EWMH lets a client set
+// _NET_WM_DESKTOP directly only while the window is unmapped; once it is up the
+// desktop has to be changed by sending a client message to the root window
+// instead, which makes it appear on the wrong desktop first.
+GLFWAPI void glfwSetX11WindowDesktop(GLFWwindow *handle, int desktop)
+{
+    _GLFW_REQUIRE_INIT();
+    _GLFWwindow* window = (_GLFWwindow*) handle;
+    if (desktop < 0 || !_glfw.x11.NET_WM_DESKTOP) return;
+    unsigned long value = (unsigned long) desktop;
+    XChangeProperty(_glfw.x11.display, window->x11.handle,
+                    _glfw.x11.NET_WM_DESKTOP, XA_CARDINAL, 32,
+                    PropModeReplace, (unsigned char*) &value, 1);
+    XFlush(_glfw.x11.display);
+}
+
 // Drag source {{{
 
 // Helper function to check if a window supports XdndAware

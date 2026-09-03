@@ -474,6 +474,8 @@ class Boss:
         override_title: str | None = None,
         x: int | None = None,
         y: int | None = None,
+        desktop: int | None = None,
+        no_focus: bool = False,
     ) -> int:
         if os_window_id is None:
             size_data = get_os_window_sizing_data(opts_for_size or get_options(), startup_session)
@@ -486,7 +488,8 @@ class Boss:
                 os_window_id = create_os_window(
                         initial_window_size_func(size_data, self.cached_values),
                         pre_show_callback,
-                        wtitle or appname, wname, wclass, wstate, disallow_override_title=bool(wtitle), x=x, y=y)
+                        wtitle or appname, wname, wclass, wstate, disallow_override_title=bool(wtitle), x=x, y=y,
+                        desktop=desktop, no_focus_on_map=no_focus)
         else:
             wname = self.args.name or self.args.cls or appname
             wclass = self.args.cls or appname
