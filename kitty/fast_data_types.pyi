@@ -1059,7 +1059,6 @@ class Screen:
     color_preference_notification: bool
     cursor_visible: bool
     suppress_cursor_render: bool
-    claude_orch_tokens: int
     scrolled_by: int
     cursor: Cursor
     disable_ligatures: int
