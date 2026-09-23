@@ -957,6 +957,14 @@ def _launch(
                     new_window.creation_spec = new_window.creation_spec._replace(spacing=tuple(opts.spacing))
                 if opts.color:
                     new_window.creation_spec = new_window.creation_spec._replace(colors=tuple(opts.color))
+        # The suppression above hides the focus churn of creating the window. It must not
+        # outlive the creation: the flag makes Window.focus_changed return immediately, so
+        # a window that keeps it never reports focus again for the rest of its life. Its
+        # watchers stop receiving on_focus_change, and the program inside it is never told
+        # it gained or lost the focus. Skip the reset while an outer context manager owns
+        # the flag, since that owner clears it when it is done (startup does this).
+        if not focus_new_window and not Window.initial_ignore_focus_changes_context_manager_in_operation:
+            new_window.ignore_focus_changes = False
         if spacing:
             patch_window_edges(new_window, spacing)
             tab.relayout()
